@@ -113,17 +113,17 @@ export default function Assessment() {
   const chosen = answers[it.id];
   const pctDone = (current / total) * 100;
   const timePct = (timeLeft / TIME_LIMIT) * 100;
-  const sizes = [30, 23, 17, 23, 30];
+  const sizes = [38, 30, 22, 30, 38];
 
   return (
     <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
       <div style={{ height: 3, background: HAIR }}>
         <div style={{ height: "100%", width: `${pctDone}%`, background: INK, transition: "width .3s ease" }} />
       </div>
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "32px 24px" }}>
+      <div className="wrap" style={{ maxWidth: 900, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
           <button onClick={goBack} disabled={current === 0} className="font-mono"
-            style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".05em", color: MUTED, background: "none", border: "none", cursor: "pointer", opacity: current === 0 ? 0.3 : 1 }}>← Back</button>
+            style={{ fontSize: 12, minHeight: 44, textTransform: "uppercase", letterSpacing: ".05em", color: MUTED, background: "none", border: "none", cursor: "pointer", opacity: current === 0 ? 0.3 : 1 }}>← Back</button>
           <span className="font-mono" style={{ fontSize: 12, color: MUTED }}>{String(current + 1).padStart(3, "0")} / {total}</span>
         </div>
 
@@ -136,38 +136,66 @@ export default function Assessment() {
 
         <p className="font-mono" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, marginBottom: 24, textAlign: "center" }}>Which is more like you?</p>
 
-        <div className="item-flex">
+        <div className="item-grid">
           <Card n="1" text={it.left.s} active={chosen != null && chosen <= 1} />
-          <div className="rating-flex">
-            <span className="font-mono end-label">most like 1</span>
-            {sizes.map((sz, i) => {
-              const on = chosen === i;
-              return (
-                <button key={i} onClick={() => record(i)}
-                  aria-label={["most like 1", "more like 1", "neutral", "more like 2", "most like 2"][i]}
-                  style={{ width: sz, height: sz, borderRadius: "50%", flexShrink: 0, border: `1.5px solid ${on ? INK : "#CFC9BC"}`, background: on ? INK : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all .15s" }}>
-                  {on && <span style={{ width: 6, height: 6, borderRadius: "50%", background: PAPER }} />}
-                </button>
-              );
-            })}
-            <span className="font-mono end-label">most like 2</span>
+          <div className="rating">
+            <div className="rating-track">
+              {sizes.map((sz, i) => {
+                const on = chosen === i;
+                const labels = ["most like 1", "more like 1", "neutral", "more like 2", "most like 2"];
+                return (
+                  <button key={i} onClick={() => record(i)} aria-label={labels[i]}
+                    className="opt">
+                    <span className="opt-dot" style={{ width: sz, height: sz,
+                      border: `1.5px solid ${on ? INK : "#CFC9BC"}`,
+                      background: on ? INK : "transparent" }}>
+                      {on && <span className="opt-fill" />}
+                    </span>
+                    <span className="opt-label font-mono">{labels[i]}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="rating-labels font-mono">
+              <span>most like 1</span><span>neutral</span><span>most like 2</span>
+            </div>
           </div>
           <Card n="2" text={it.right.s} active={chosen != null && chosen >= 3} />
         </div>
 
-        <p className="font-mono" style={{ fontSize: 12, marginTop: 32, textAlign: "center", color: MUTED }}>Keys 1–5 to answer · Backspace to go back</p>
+        <p className="font-mono kbd-hint" style={{ fontSize: 12, marginTop: 32, textAlign: "center", color: MUTED }}>Keys 1–5 to answer · Backspace to go back</p>
       </div>
 
       <style>{`
         .font-serif{font-family:Georgia,'Times New Roman',serif}
         .font-mono{font-family:ui-monospace,'SF Mono',Menlo,monospace}
-        .item-flex{display:flex;flex-direction:column;gap:16px}
-        .rating-flex{display:flex;flex-direction:column;align-items:center;justify-content:space-between;
-          align-self:center;gap:12px;height:208px}
-        .end-label{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:${MUTED};white-space:nowrap}
+        .wrap{padding:24px 16px}
+        .item-grid{display:flex;flex-direction:column;gap:14px}
+        .rating{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%}
+        .rating-track{display:flex;flex-direction:column;align-items:stretch;gap:6px;width:100%}
+        .opt{display:flex;align-items:center;gap:12px;min-height:48px;width:100%;
+          padding:0 12px;background:none;border:none;cursor:pointer;text-align:left}
+        .opt-dot{display:flex;align-items:center;justify-content:center;
+          border-radius:50%;flex-shrink:0;transition:all .15s}
+        .opt-fill{width:6px;height:6px;border-radius:50%;background:${PAPER}}
+        .opt-label{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:${MUTED}}
+        .rating-labels{display:none;font-size:10px;letter-spacing:.05em;
+          text-transform:uppercase;color:${MUTED}}
+        .kbd-hint{display:none}
+        .item-card{min-height:3.5em;padding:16px}
+        .stmt{font-size:1.05rem}
+
         @media (min-width:768px){
-          .item-flex{flex-direction:row;align-items:stretch;gap:12px}
-          .rating-flex{flex-direction:row;height:auto;width:288px}
+          .wrap{padding:32px 24px}
+          .item-grid{flex-direction:row;align-items:center;gap:24px}
+          .rating{flex:0 0 280px;width:auto}
+          .rating-track{flex-direction:row;justify-content:space-between;align-items:center;gap:0}
+          .opt{flex-direction:column;min-height:0;width:auto;padding:0}
+          .opt-label{display:none}
+          .rating-labels{display:flex;justify-content:space-between;width:100%}
+          .kbd-hint{display:block}
+          .item-card{min-height:6em;padding:20px}
+          .stmt{font-size:1.15rem}
         }
         button:focus-visible{outline:2px solid ${INK};outline-offset:2px}
         @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -178,9 +206,9 @@ export default function Assessment() {
 
 function Card({ n, text, active }: { n: string; text: string; active: boolean }) {
   return (
-    <div className="item-card" style={{ flex: 1, display: "flex", gap: 12, padding: 20, alignItems: "center", minHeight: "4.5em", border: `1.5px solid ${active ? INK : HAIR}`, background: active ? "#F2EFE8" : PAPER }}>
+    <div className="item-card" style={{ flex: 1, minWidth: 0, display: "flex", gap: 12, alignItems: "center", border: `1.5px solid ${active ? INK : HAIR}`, background: active ? "#F2EFE8" : PAPER }}>
       <span className="font-mono" style={{ width: 20, height: 20, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: `1px solid ${MUTED}`, fontSize: 12, color: MUTED }}>{n}</span>
-      <span className="font-serif" style={{ color: INK, fontSize: "1.15rem", lineHeight: 1.3 }}>{text}</span>
+      <span className="font-serif stmt" style={{ color: INK, lineHeight: 1.3 }}>{text}</span>
     </div>
   );
 }
