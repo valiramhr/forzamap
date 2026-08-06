@@ -16,25 +16,40 @@ export const useAuth = () => useContext(Ctx);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
+  const [adminReady, setAdminReady] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s);
+      setAuthReady(true);
+    });
+    supabase.auth.getSession().then(({ data }) => {
+      setSession((prev) => prev ?? data.session);
+      setAuthReady(true);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
+    if (!authReady) return;
     let alive = true;
+    setAdminReady(false);
     (async () => {
-      if (!session) { setIsAdmin(false); setLoading(false); return; }
+      if (!session) { if (alive) { setIsAdmin(false); setAdminReady(true); } return; }
       const { data } = await supabase
         .from("admins").select("user_id").eq("user_id", session.user.id).maybeSingle();
-      if (alive) { setIsAdmin(!!data); setLoading(false); }
+      if (alive) { setIsAdmin(!!data); setAdminReady(true); }
     })();
     return () => { alive = false; };
-  }, [session]);
+  }, [session, authReady]);
 
+  const loading = !authReady || !adminReady;
   const signOut = async () => { await supabase.auth.signOut(); };
-  return <Ctx.Provider value={{ session, isAdmin, loading, signOut }}>{children}</Ctx.Provider>;
+
+  return (
+    <Ctx.Provider value={{ session, isAdmin, loading, signOut }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
