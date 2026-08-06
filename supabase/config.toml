@@ -1,7 +1,7 @@
 project_id = "strengths-profile"
 
 [functions.admin-invite]
-verify_jwt = true
+verify_jwt = false
 
 [functions.request-link]
 verify_jwt = false
