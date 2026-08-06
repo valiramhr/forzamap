@@ -17,7 +17,7 @@ Drop `public/` into your web root as-is. Every path below is absolute from `/`.
 ## /brand
 
 Lockups and master icons for the app header, reports, decks and email.
-Full spec in `brand/README.md`.
+Full spec in `BRAND-ASSETS-README.md`.
 
 ## Install
 
