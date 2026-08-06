@@ -121,20 +121,20 @@ export default function Assessment() {
         <div style={{ height: "100%", width: `${pctDone}%`, background: INK, transition: "width .3s ease" }} />
       </div>
       <div className="wrap" style={{ maxWidth: 900, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
+        <div className="hdr-row" style={{ display: "flex", justifyContent: "space-between" }}>
           <button onClick={goBack} disabled={current === 0} className="font-mono"
             style={{ fontSize: 12, minHeight: 44, textTransform: "uppercase", letterSpacing: ".05em", color: MUTED, background: "none", border: "none", cursor: "pointer", opacity: current === 0 ? 0.3 : 1 }}>← Back</button>
           <span className="font-mono" style={{ fontSize: 12, color: MUTED }}>{String(current + 1).padStart(3, "0")} / {total}</span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32 }}>
+        <div className="timer-row" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, height: 4, borderRadius: 999, overflow: "hidden", background: HAIR }}>
             <div style={{ height: "100%", width: `${timePct}%`, background: timeLeft <= 5 ? "#9C3D54" : INK, transition: "width .25s linear" }} />
           </div>
           <span className="font-mono" style={{ fontSize: 12, width: 32, textAlign: "right", color: timeLeft <= 5 ? "#9C3D54" : MUTED }}>{timeLeft}s</span>
         </div>
 
-        <p className="font-mono" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, marginBottom: 24, textAlign: "center" }}>Which is more like you?</p>
+        <p className="font-mono prompt" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, textAlign: "center" }}>Which is more like you?</p>
 
         <div className="item-grid">
           <Card n="1" text={it.left.s} active={chosen != null && chosen <= 1} />
@@ -170,6 +170,9 @@ export default function Assessment() {
         .font-serif{font-family:Georgia,'Times New Roman',serif}
         .font-mono{font-family:ui-monospace,'SF Mono',Menlo,monospace}
         .wrap{padding:24px 16px}
+        .hdr-row{margin-bottom:16px}
+        .timer-row{margin-bottom:20px}
+        .prompt{margin-bottom:16px}
         .item-grid{display:flex;flex-direction:column;gap:14px}
         .rating{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%}
         .rating-track{display:flex;flex-direction:column;align-items:stretch;gap:6px;width:100%}
@@ -187,6 +190,9 @@ export default function Assessment() {
 
         @media (min-width:768px){
           .wrap{padding:32px 24px}
+          .hdr-row{margin-bottom:24px}
+          .timer-row{margin-bottom:32px}
+          .prompt{margin-bottom:24px}
           .item-grid{flex-direction:row;align-items:center;gap:24px}
           .rating{flex:0 0 280px;width:auto}
           .rating-track{flex-direction:row;justify-content:space-between;align-items:center;gap:0}
