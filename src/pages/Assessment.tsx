@@ -188,7 +188,7 @@ export default function Assessment() {
           text-transform:uppercase;color:${MUTED}}
         .kbd-hint{display:none}
         .item-card{min-height:3.5em;padding:16px}
-        .stmt{font-size:1.05rem}
+        .stmt{font-size:1.05rem;font-weight:500}
 
         @media (min-width:768px){
           .wrap{padding:32px 24px}
