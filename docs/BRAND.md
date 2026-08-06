@@ -1,7 +1,7 @@
 # ForzaMap — Brand Handover
 
 Direction 1a · “Contour” · v1.0 · August 2026
-Full visual spec: `ForzaMap Brand Handover.dc.html` (print to PDF from the page).
+Full visual spec: `ForzaMap-Brand-Handover.html` (print to PDF from the page).
 
 ---
 
