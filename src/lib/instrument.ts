@@ -10,10 +10,10 @@ export type ThemeKey =
   | "analyst" | "visionary" | "learner";
 
 export const DOMAINS: Record<DomainKey, { label: string; color: string; note: string }> = {
-  executing:  { label: "Executing",             color: "#9C3D54", note: "How you make things happen" },
-  influencing:{ label: "Influencing",           color: "#C08A2D", note: "How you reach others" },
-  relating:   { label: "Relationship Building", color: "#2E7D74", note: "How you build bonds" },
-  thinking:   { label: "Strategic Thinking",    color: "#3B5C99", note: "How you take in the world" },
+  executing:  { label: "Executing",             color: "#C96442", note: "How you make things happen" },
+  influencing:{ label: "Influencing",           color: "#B8862F", note: "How you reach others" },
+  relating:   { label: "Relationship Building", color: "#4F7D6C", note: "How you build bonds" },
+  thinking:   { label: "Strategic Thinking",    color: "#4C6280", note: "How you take in the world" },
 };
 
 export const THEMES: Record<ThemeKey, { name: string; domain: DomainKey; desc: string }> = {

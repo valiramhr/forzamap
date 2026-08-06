@@ -98,6 +98,17 @@ npm run dev               # http://localhost:5173
 - **/assessment** — the candidate's timed assessment (resumes if interrupted).
 - **/result** — the candidate's own report + PDF download.
 
+## Brand
+
+ForzaMap's identity — lockup variants, clear space and minimum sizes, the icon
+range, colour and type specs — is documented in [`docs/BRAND.md`](docs/BRAND.md),
+with the full visual spec in `docs/ForzaMap-Brand-Handover.html`. Both are
+reference documents; they are not served by the app.
+
+Palette and type tokens live in `src/lib/ui.ts` (`PAPER`, `INK`, `MUTED`, `HAIR`,
+`FORZA`, `LIFT`, `BODY`); the font stacks are set in `tailwind.config.js` and
+`src/index.css`. Brand assets are served from `public/` and `public/brand/`.
+
 ## Notes / possible next steps
 - `@react-pdf/renderer` is ~1 MB; `React.lazy` the report/PDF routes to keep the
   assessment flow light.

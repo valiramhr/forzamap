@@ -2,4 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 :root { color-scheme: light; }
-body { margin: 0; background: #FBFAF7; }
+body {
+  margin: 0;
+  background: #F0EEE9;
+  font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 400;
+}
+
+/* Brand type roles — see docs/BRAND.md.
+   Display/headings: Archivo 800, -0.035em. UI labels and eyebrows: Archivo 500, +0.07em.
+   .font-mono (JetBrains Mono) is reserved for counters, timers, numeric scores and codes. */
+.font-display {
+  font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+.font-label {
+  font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+}
+/* The old serif role now maps to the display face. */
+.font-serif {
+  font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}

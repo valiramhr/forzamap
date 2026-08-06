@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { PAPER, INK, MUTED, HAIR } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, BODY } from "../lib/ui";
 
 const inputStyle = {
   width: "100%", padding: "12px 14px", border: `1px solid ${HAIR}`,
@@ -9,11 +9,11 @@ const inputStyle = {
 };
 const buttonStyle = {
   width: "100%", padding: 14, background: INK, color: PAPER, fontSize: 13,
-  letterSpacing: ".05em", textTransform: "uppercase" as const, border: "none", cursor: "pointer",
+  letterSpacing: ".07em", textTransform: "uppercase" as const, border: "none", cursor: "pointer",
 };
 const toggleStyle = {
   display: "block", marginTop: 20, background: "none", border: "none", padding: 0,
-  color: MUTED, fontSize: 12, letterSpacing: ".05em", cursor: "pointer",
+  color: MUTED, fontSize: 12, letterSpacing: ".07em", cursor: "pointer",
   textDecoration: "underline",
 };
 
@@ -55,16 +55,17 @@ export default function Login() {
   return (
     <div style={{ minHeight: "100vh", background: PAPER, display: "grid", placeItems: "center", padding: 24 }}>
       <div style={{ maxWidth: 420, width: "100%" }}>
-        <p className="font-mono" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, marginBottom: 20 }}>Strengths Profile</p>
-        <h1 className="font-serif" style={{ fontSize: "2rem", color: INK, marginBottom: 12 }}>Sign in</h1>
+        <img src="/brand/forzamap-lockup-tagline.svg" alt="ForzaMap — your strengths, charted"
+          style={{ width: 220, marginBottom: 28 }} />
+        <h1 className="font-display" style={{ fontSize: "2rem", color: INK, marginBottom: 12 }}>Sign in</h1>
         {sent ? (
-          <p style={{ color: "#3A3F49", lineHeight: 1.6 }}>
+          <p style={{ color: BODY, lineHeight: 1.6 }}>
             If <strong>{email}</strong> was invited, a sign-in link is on its way.
             Open it on this device to continue. You can close this tab.
           </p>
         ) : mode === "password" ? (
           <>
-            <p style={{ color: "#3A3F49", lineHeight: 1.6, marginBottom: 20 }}>
+            <p style={{ color: BODY, lineHeight: 1.6, marginBottom: 20 }}>
               Sign in with your email and password.
             </p>
             <input
@@ -83,17 +84,17 @@ export default function Login() {
               <p style={{ color: "#B4232A", fontSize: 13, lineHeight: 1.5, marginBottom: 12 }}>{error}</p>
             )}
             <button onClick={signIn} disabled={busy}
-              className="font-mono"
+              className="font-label"
               style={{ ...buttonStyle, opacity: busy ? 0.6 : 1 }}>
               {busy ? "Signing in…" : "Sign in"}
             </button>
-            <button onClick={() => switchMode("link")} className="font-mono" style={toggleStyle}>
+            <button onClick={() => switchMode("link")} className="font-label" style={toggleStyle}>
               Email me a link instead
             </button>
           </>
         ) : (
           <>
-            <p style={{ color: "#3A3F49", lineHeight: 1.6, marginBottom: 20 }}>
+            <p style={{ color: BODY, lineHeight: 1.6, marginBottom: 20 }}>
               Enter the email you were invited with. We'll send a one-tap sign-in
               link — there's no password, and accounts are invitation-only.
             </p>
@@ -104,11 +105,11 @@ export default function Login() {
               style={inputStyle}
             />
             <button onClick={requestLink} disabled={busy}
-              className="font-mono"
+              className="font-label"
               style={{ ...buttonStyle, opacity: busy ? 0.6 : 1 }}>
               {busy ? "Sending…" : "Email me a link"}
             </button>
-            <button onClick={() => switchMode("password")} className="font-mono" style={toggleStyle}>
+            <button onClick={() => switchMode("password")} className="font-label" style={toggleStyle}>
               Admin sign in
             </button>
           </>

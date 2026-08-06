@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../auth/AuthProvider";
-import { PAPER, INK, MUTED, HAIR } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, FORZA } from "../lib/ui";
 import {
   buildItems, score, DOMAINS, TIME_LIMIT,
   type Item, type Answers,
@@ -116,25 +116,25 @@ export default function Assessment() {
   const sizes = [38, 30, 22, 30, 38];
 
   return (
-    <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif" }}>
       <div style={{ height: 3, background: HAIR }}>
         <div style={{ height: "100%", width: `${pctDone}%`, background: INK, transition: "width .3s ease" }} />
       </div>
       <div className="wrap" style={{ maxWidth: 900, margin: "0 auto" }}>
         <div className="hdr-row" style={{ display: "flex", justifyContent: "space-between" }}>
-          <button onClick={goBack} disabled={current === 0} className="font-mono"
-            style={{ fontSize: 12, minHeight: 44, textTransform: "uppercase", letterSpacing: ".05em", color: MUTED, background: "none", border: "none", cursor: "pointer", opacity: current === 0 ? 0.3 : 1 }}>← Back</button>
+          <button onClick={goBack} disabled={current === 0} className="font-label"
+            style={{ fontSize: 12, minHeight: 44, textTransform: "uppercase", letterSpacing: ".07em", color: MUTED, background: "none", border: "none", cursor: "pointer", opacity: current === 0 ? 0.3 : 1 }}>← Back</button>
           <span className="font-mono" style={{ fontSize: 12, color: MUTED }}>{String(current + 1).padStart(3, "0")} / {total}</span>
         </div>
 
         <div className="timer-row" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, height: 4, borderRadius: 999, overflow: "hidden", background: HAIR }}>
-            <div style={{ height: "100%", width: `${timePct}%`, background: timeLeft <= 5 ? "#9C3D54" : INK, transition: "width .25s linear" }} />
+            <div style={{ height: "100%", width: `${timePct}%`, background: timeLeft <= 5 ? FORZA : INK, transition: "width .25s linear" }} />
           </div>
-          <span className="font-mono" style={{ fontSize: 12, width: 32, textAlign: "right", color: timeLeft <= 5 ? "#9C3D54" : MUTED }}>{timeLeft}s</span>
+          <span className="font-mono" style={{ fontSize: 12, width: 32, textAlign: "right", color: timeLeft <= 5 ? FORZA : MUTED }}>{timeLeft}s</span>
         </div>
 
-        <p className="font-mono prompt" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, textAlign: "center" }}>Which is more like you?</p>
+        <p className="font-label prompt" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, textAlign: "center" }}>Which is more like you?</p>
 
         <div className="item-grid">
           <Card n="1" text={it.left.s} active={chosen != null && chosen <= 1} />
@@ -147,28 +147,30 @@ export default function Assessment() {
                   <button key={i} onClick={() => record(i)} aria-label={labels[i]}
                     className="opt">
                     <span className="opt-dot" style={{ width: sz, height: sz,
-                      border: `1.5px solid ${on ? INK : "#CFC9BC"}`,
+                      border: `1.5px solid ${on ? INK : "#C4BDB1"}`,
                       background: on ? INK : "transparent" }}>
                       {on && <span className="opt-fill" />}
                     </span>
-                    <span className="opt-label font-mono">{labels[i]}</span>
+                    <span className="opt-label font-label">{labels[i]}</span>
                   </button>
                 );
               })}
             </div>
-            <div className="rating-labels font-mono">
+            <div className="rating-labels font-label">
               <span>most like 1</span><span>neutral</span><span>most like 2</span>
             </div>
           </div>
           <Card n="2" text={it.right.s} active={chosen != null && chosen >= 3} />
         </div>
 
-        <p className="font-mono kbd-hint" style={{ fontSize: 12, marginTop: 32, textAlign: "center", color: MUTED }}>Keys 1–5 to answer · Backspace to go back</p>
+        <p className="font-label kbd-hint" style={{ fontSize: 12, marginTop: 32, textAlign: "center", color: MUTED }}>Keys 1–5 to answer · Backspace to go back</p>
       </div>
 
       <style>{`
-        .font-serif{font-family:Georgia,'Times New Roman',serif}
-        .font-mono{font-family:ui-monospace,'SF Mono',Menlo,monospace}
+        .font-serif{font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-weight:800;letter-spacing:-0.035em}
+        .font-display{font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-weight:800;letter-spacing:-0.035em}
+        .font-label{font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-weight:500;letter-spacing:.07em}
+        .font-mono{font-family:'JetBrains Mono',ui-monospace,monospace}
         .wrap{padding:24px 16px}
         .hdr-row{margin-bottom:16px}
         .timer-row{margin-bottom:20px}
@@ -181,8 +183,8 @@ export default function Assessment() {
         .opt-dot{display:flex;align-items:center;justify-content:center;
           border-radius:50%;flex-shrink:0;transition:all .15s}
         .opt-fill{width:6px;height:6px;border-radius:50%;background:${PAPER}}
-        .opt-label{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:${MUTED}}
-        .rating-labels{display:none;font-size:10px;letter-spacing:.05em;
+        .opt-label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED}}
+        .rating-labels{display:none;font-size:10px;letter-spacing:.07em;
           text-transform:uppercase;color:${MUTED}}
         .kbd-hint{display:none}
         .item-card{min-height:3.5em;padding:16px}
@@ -212,12 +214,12 @@ export default function Assessment() {
 
 function Card({ n, text, active }: { n: string; text: string; active: boolean }) {
   return (
-    <div className="item-card" style={{ flex: 1, minWidth: 0, display: "flex", gap: 12, alignItems: "center", border: `1.5px solid ${active ? INK : HAIR}`, background: active ? "#F2EFE8" : PAPER }}>
+    <div className="item-card" style={{ flex: 1, minWidth: 0, display: "flex", gap: 12, alignItems: "center", border: `1.5px solid ${active ? INK : HAIR}`, background: active ? "#E4E0D7" : PAPER }}>
       <span className="font-mono" style={{ width: 20, height: 20, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: `1px solid ${MUTED}`, fontSize: 12, color: MUTED }}>{n}</span>
       <span className="font-serif stmt" style={{ color: INK, lineHeight: 1.3 }}>{text}</span>
     </div>
   );
 }
 function Center({ children }: { children: React.ReactNode }) {
-  return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: PAPER, fontFamily: "monospace", color: MUTED }}>{children}</div>;
+  return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: PAPER, fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif", color: MUTED }}>{children}</div>;
 }

@@ -35,20 +35,20 @@ export default function Result() {
     <div style={{ minHeight: "100vh", background: PAPER }}>
       <Bar>
         <PDFDownloadLink document={<ReportPDF result={result!} name={name} />} fileName="strengths-profile.pdf"
-          className="font-mono" style={btn}>
+          className="font-label" style={btn}>
           {({ loading }: { loading: boolean }) => (loading ? "Preparing PDF…" : "Download PDF")}
         </PDFDownloadLink>
-        <button onClick={signOut} className="font-mono" style={{ ...btn, background: "none", color: MUTED, border: `1px solid ${HAIR}` }}>Sign out</button>
+        <button onClick={signOut} className="font-label" style={{ ...btn, background: "none", color: MUTED, border: `1px solid ${HAIR}` }}>Sign out</button>
       </Bar>
       <ReportView result={result!} name={name} />
     </div>
   );
 }
 
-const btn: React.CSSProperties = { padding: "10px 16px", background: INK, color: PAPER, fontSize: 12, letterSpacing: ".05em", textTransform: "uppercase", textDecoration: "none", border: "none", cursor: "pointer" };
+const btn: React.CSSProperties = { padding: "10px 16px", background: INK, color: PAPER, fontSize: 12, letterSpacing: ".07em", textTransform: "uppercase", textDecoration: "none", border: "none", cursor: "pointer" };
 function Bar({ children }: { children: React.ReactNode }) {
   return <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: 16, borderBottom: `1px solid ${HAIR}`, position: "sticky", top: 0, background: PAPER, zIndex: 5 }}>{children}</div>;
 }
 function Center({ children }: { children: React.ReactNode }) {
-  return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: PAPER, fontFamily: "monospace", color: MUTED, gap: 8 }}>{children}</div>;
+  return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: PAPER, fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif", color: MUTED, gap: 8 }}>{children}</div>;
 }

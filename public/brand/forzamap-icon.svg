@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="ForzaMap">
+  <title>ForzaMap</title>
+  <rect width="512" height="512" rx="111" fill="#2A251F"></rect>
+  <path fill="#F4F1EA" fill-rule="evenodd" d="M199.67 129.33L199.67 301.00L244.33 301.00L244.33 235.33L321.00 235.33L320.67 201.33L244.33 201.33L244.33 164.33L331.33 164.33L331.33 129.33L200.00 129.33Z"></path>
+  <g fill="#C96442">
+    <rect x="158" y="348" width="196" height="13"></rect>
+    <rect x="158" y="378" width="118" height="13" opacity="0.5"></rect>
+  </g>
+</svg>
