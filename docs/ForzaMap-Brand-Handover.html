@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  doc-page:not(:defined) { visibility: hidden; }
+  a { color: #C96442; }
+  a:hover { color: #A24D2F; }
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+
+<doc-page margin="0.8in">
+
+  <div slot="footer" style="display: flex; justify-content: space-between; align-items: baseline; padding-top: 10px; border-top: 1px solid rgba(42,37,31,0.15); font-family: Archivo, sans-serif; font-size: 9pt; color: rgba(42,37,31,0.5);">
+    <div>ForzaMap · Brand handover</div>
+    <div>Direction 1a · Contour · v1.0</div>
+  </div>
+
+  <div style="font-family: Archivo, -apple-system, sans-serif; color: #2A251F;">
+
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 3px solid #2A251F;">
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; flex-direction: column; gap: 4px; width: 96px;">
+          <div style="height: 3px; width: 100%; background: #C96442;"></div>
+          <div style="height: 3px; width: 68%; background: #C96442; opacity: 0.5;"></div>
+          <div style="height: 3px; width: 38%; background: #C96442; opacity: 0.25;"></div>
+        </div>
+        <div style="font-size: 34pt; line-height: 0.9; letter-spacing: -0.035em;"><span style="font-weight: 800;">Forza</span><span style="font-weight: 400;">Map</span></div>
+      </div>
+      <div style="text-align: right; font-size: 10pt; line-height: 1.6; color: rgba(42,37,31,0.6); white-space: nowrap;">
+        <div style="font-weight: 600; color: #2A251F;">Brand handover</div>
+        <div>Direction 1a · Contour</div>
+        <div>Version 1.0 · August 2026</div>
+      </div>
+    </div>
+
+    <p style="font-size: 12.5pt; line-height: 1.55; margin: 26px 0 34px; max-width: 34em; color: rgba(42,37,31,0.85);">Everything needed to put the ForzaMap identity into production: the locked lockup, the icon range, colour and type specs, spacing rules, and the complete favicon and app-icon asset set. The mark pairs a weight-contrast wordmark with three elevation rules — the terrain read that carries the “Map” without a literal map.</p>
+
+    <h2 style="font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,37,31,0.18);">1 · The lockup</h2>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 14px; break-inside: avoid;">
+      <div style="border: 1px solid rgba(42,37,31,0.14); padding: 26px; display: flex; align-items: center; justify-content: center; min-height: 150px;">
+        <img src="assets/forzamap-lockup-tagline.svg" alt="ForzaMap primary lockup with tagline" style="width: 84%; height: auto; display: block;">
+      </div>
+      <div style="border: 1px solid rgba(42,37,31,0.14); background: #22201C; padding: 26px; display: flex; align-items: center; justify-content: center; min-height: 150px;">
+        <img src="assets/forzamap-lockup-reversed.svg" alt="ForzaMap reversed lockup" style="width: 84%; height: auto; display: block;">
+      </div>
+      <div style="font-size: 9.5pt; color: rgba(42,37,31,0.62); line-height: 1.5;"><strong style="color: #2A251F; font-weight: 600;">Primary.</strong> Ink wordmark, Forza rules, optional tagline. Default for reports, decks and the web app header.</div>
+      <div style="font-size: 9.5pt; color: rgba(42,37,31,0.62); line-height: 1.5;"><strong style="color: #2A251F; font-weight: 600;">Reversed.</strong> Paper wordmark with the Lift accent on ink #22201C or darker. Never on mid-tone photography.</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 34px; break-inside: avoid;">
+      <div style="border: 1px solid rgba(42,37,31,0.14); padding: 26px; display: flex; align-items: center; justify-content: center; min-height: 130px;">
+        <img src="assets/forzamap-lockup-mono-ink.svg" alt="ForzaMap one-colour lockup" style="width: 78%; height: auto; display: block;">
+      </div>
+      <div style="font-size: 9.5pt; color: rgba(42,37,31,0.62); line-height: 1.5; align-self: center;"><strong style="color: #2A251F; font-weight: 600;">One colour.</strong> Rules drop to 100 / 55 / 28 % ink. Use for stamped, engraved, single-plate or faxed output, and any context below 88 px where colour would muddy.</div>
+    </div>
+
+    <h2 style="font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,37,31,0.18);">2 · Clear space &amp; minimum size</h2>
+
+    <div style="display: flex; align-items: center; gap: 34px; margin-bottom: 34px; break-inside: avoid;">
+      <div style="border: 1px solid rgba(42,37,31,0.14); padding: 34px; display: inline-flex;">
+        <div style="padding: 30px; border: 1px dashed rgba(201,100,66,0.6);">
+          <img src="assets/forzamap-lockup.svg" alt="ForzaMap clear space" style="width: 168px; height: auto; display: block;">
+        </div>
+      </div>
+      <div style="font-size: 10pt; line-height: 1.6; color: rgba(42,37,31,0.75); max-width: 20em;">
+        <div style="margin-bottom: 10px;"><strong style="font-weight: 600; color: #2A251F;">Clear space</strong> on all four sides equals the cap height of <em>F</em>. Nothing — rules, images, page trim — enters it.</div>
+        <div style="margin-bottom: 10px;"><strong style="font-weight: 600; color: #2A251F;">Minimum width</strong> 88 px on screen, 24 mm in print. Below that, drop the tagline; below 64 px use the icon instead.</div>
+        <div><strong style="font-weight: 600; color: #2A251F;">Never</strong> stretch, re-weight, recolour the rules independently, add a stroke or shadow, or set the wordmark in another typeface.</div>
+      </div>
+    </div>
+
+    <h2 style="font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,37,31,0.18);">3 · Icon range</h2>
+
+    <div style="border: 1px solid rgba(42,37,31,0.14); padding: 30px; display: flex; align-items: center; gap: 34px; margin-bottom: 12px; break-inside: avoid;">
+      <img src="assets/icon-512.png" alt="ForzaMap icon 120" style="width: 96px; height: 96px; display: block;">
+      <img src="assets/favicon-48.png" alt="ForzaMap icon 48" style="width: 48px; height: 48px; display: block;">
+      <img src="assets/favicon-32.png" alt="ForzaMap icon 32" style="width: 32px; height: 32px; display: block;">
+      <img src="assets/favicon-16.png" alt="ForzaMap icon 16" style="width: 16px; height: 16px; display: block; image-rendering: pixelated;">
+      <div style="font-size: 9.5pt; color: rgba(42,37,31,0.62); line-height: 1.5; max-width: 20em;">The icon simplifies as it shrinks: two rules at 48 px and above, one at 32 px, none at 16 px. Corner radius is 21.7 % of the tile; the maskable variant is square with the mark at 60 % scale.</div>
+    </div>
+
+    <div style="font-size: 9.5pt; color: rgba(42,37,31,0.62); line-height: 1.5; margin-bottom: 34px;">Tile <span style="font-family: 'JetBrains Mono', monospace;">#2A251F</span> · mark <span style="font-family: 'JetBrains Mono', monospace;">#F4F1EA</span> · rules <span style="font-family: 'JetBrains Mono', monospace;">#C96442</span> at 100 % and 50 %.</div>
+
+    <h2 style="font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,37,31,0.18);">4 · Colour</h2>
+
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 34px; break-inside: avoid;">
+      <div>
+        <div style="height: 74px; background: #2A251F;"></div>
+        <div style="font-size: 9pt; line-height: 1.5; margin-top: 7px; font-family: 'JetBrains Mono', monospace; color: rgba(42,37,31,0.7);">Ink<br>#2A251F<br>42 37 31<br>CMYK 65 65 70 75</div>
+      </div>
+      <div>
+        <div style="height: 74px; background: #C96442;"></div>
+        <div style="font-size: 9pt; line-height: 1.5; margin-top: 7px; font-family: 'JetBrains Mono', monospace; color: rgba(42,37,31,0.7);">Forza<br>#C96442<br>201 100 66<br>CMYK 15 72 80 3</div>
+      </div>
+      <div>
+        <div style="height: 74px; background: #E0764F;"></div>
+        <div style="font-size: 9pt; line-height: 1.5; margin-top: 7px; font-family: 'JetBrains Mono', monospace; color: rgba(42,37,31,0.7);">Lift<br>#E0764F<br>224 118 79<br>dark grounds only</div>
+      </div>
+      <div>
+        <div style="height: 74px; background: #F0EEE9; box-shadow: inset 0 0 0 1px rgba(42,37,31,0.14);"></div>
+        <div style="font-size: 9pt; line-height: 1.5; margin-top: 7px; font-family: 'JetBrains Mono', monospace; color: rgba(42,37,31,0.7);">Paper<br>#F0EEE9<br>240 238 233<br>surface</div>
+      </div>
+    </div>
+
+    <h2 style="font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,37,31,0.18);">5 · Type</h2>
+
+    <div style="margin-bottom: 34px; break-inside: avoid;">
+      <div style="font-size: 24pt; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1;">Archivo 800 — Forza</div>
+      <div style="font-size: 24pt; font-weight: 400; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 12px;">Archivo 400 — Map</div>
+      <div style="font-size: 10pt; line-height: 1.65; color: rgba(42,37,31,0.72); max-width: 34em;">The wordmark is Archivo 800 / 400 at −0.035 em tracking, drawn as one unit — never re-typed. Tagline and UI labels: Archivo 500 at +0.07 em. Body copy in reports: Archivo 400. Technical values and codes: JetBrains Mono 400. Both families are open source (SIL OFL) and free for commercial and embedded use.</div>
+    </div>
+
+    <h2 style="font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,37,31,0.18);">6 · Asset inventory</h2>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-bottom: 22px;">
+      <thead>
+        <tr style="text-align: left; border-bottom: 1.5px solid #2A251F;">
+          <th style="padding: 7px 10px 7px 0; font-weight: 600;">File</th>
+          <th style="padding: 7px 10px; font-weight: 600;">Format</th>
+          <th style="padding: 7px 0 7px 10px; font-weight: 600;">Use</th>
+        </tr>
+      </thead>
+      <tbody style="color: rgba(42,37,31,0.78);">
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">forzamap-lockup.svg</td><td style="padding: 6px 10px;">SVG</td><td style="padding: 6px 0 6px 10px;">Primary, no tagline</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">forzamap-lockup-tagline.svg</td><td style="padding: 6px 10px;">SVG</td><td style="padding: 6px 0 6px 10px;">Primary with tagline</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">forzamap-lockup-reversed.svg</td><td style="padding: 6px 10px;">SVG</td><td style="padding: 6px 0 6px 10px;">On ink grounds</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">forzamap-lockup-mono-ink.svg</td><td style="padding: 6px 10px;">SVG</td><td style="padding: 6px 0 6px 10px;">One-colour print</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">forzamap-lockup-2x.png</td><td style="padding: 6px 10px;">PNG 608×274</td><td style="padding: 6px 0 6px 10px;">Decks, email, docs</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">forzamap-icon.svg</td><td style="padding: 6px 10px;">SVG</td><td style="padding: 6px 0 6px 10px;">Master icon</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">favicon.svg</td><td style="padding: 6px 10px;">SVG</td><td style="padding: 6px 0 6px 10px;">Modern browsers</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">favicon-16/32/48.png</td><td style="padding: 6px 10px;">PNG</td><td style="padding: 6px 0 6px 10px;">ICO source set</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">apple-touch-icon-180.png</td><td style="padding: 6px 10px;">PNG 180</td><td style="padding: 6px 0 6px 10px;">iOS home screen</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">icon-192.png · icon-512.png</td><td style="padding: 6px 10px;">PNG</td><td style="padding: 6px 0 6px 10px;">PWA manifest</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">icon-maskable-512.png</td><td style="padding: 6px 10px;">PNG</td><td style="padding: 6px 0 6px 10px;">Android maskable</td></tr>
+        <tr style="border-bottom: 1px solid rgba(42,37,31,0.1);"><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">site.webmanifest</td><td style="padding: 6px 10px;">JSON</td><td style="padding: 6px 0 6px 10px;">PWA metadata</td></tr>
+        <tr><td style="padding: 6px 10px 6px 0; font-family: 'JetBrains Mono', monospace;">head-snippet.html</td><td style="padding: 6px 10px;">HTML</td><td style="padding: 6px 0 6px 10px;">Install markup</td></tr>
+      </tbody>
+    </table>
+
+    <h2 style="font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,37,31,0.18);">7 · Favicon install</h2>
+
+    <pre style="font-family: 'JetBrains Mono', monospace; font-size: 8.5pt; line-height: 1.7; background: #F0EEE9; border-left: 3px solid #C96442; padding: 16px 18px; margin: 0 0 14px; white-space: pre-wrap; break-inside: avoid; color: #2A251F;">&lt;link rel="icon" href="/favicon.ico" sizes="32x32"&gt;
+&lt;link rel="icon" href="/favicon.svg" type="image/svg+xml"&gt;
+&lt;link rel="apple-touch-icon" href="/apple-touch-icon-180.png"&gt;
+&lt;link rel="manifest" href="/site.webmanifest"&gt;
+&lt;meta name="theme-color" content="#2A251F"&gt;</pre>
+
+    <p style="font-size: 10pt; line-height: 1.65; color: rgba(42,37,31,0.72); margin: 0 0 34px; max-width: 34em;">Serve all files from the web root. <span style="font-family: 'JetBrains Mono', monospace;">favicon.ico</span> is the one file to pack yourself — bundle <span style="font-family: 'JetBrains Mono', monospace;">favicon-16/32/48.png</span> into a single multi-resolution ICO with any packer.</p>
+
+    <h2 style="font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,37,31,0.18);">8 · Before release</h2>
+
+    <ul style="font-size: 10pt; line-height: 1.7; color: rgba(42,37,31,0.78); margin: 0; padding-left: 1.15em; max-width: 36em;">
+      <li>All lettering ships as <strong style="font-weight: 600;">outlined vector paths</strong> — no font dependency in any SVG or PNG, identical rendering everywhere. The paths are traced from Archivo at high resolution (≈0.2 unit tolerance); a type designer redrawing them as true Bézier curves is the one upgrade worth buying.</li>
+      <li>Commission a proper drawn cut of the wordmark if budget allows — the <em>F</em>/<em>M</em> junctions and the <em>z</em> shoulder want optical correction at large sizes.</li>
+      <li>Add Pantone equivalents for Ink and Forza once a print partner is chosen; the CMYK values above are uncoated-stock estimates.</li>
+      <li>Register <span style="font-family: 'JetBrains Mono', monospace;">forzamap</span> handles and clear the name in the target territory before public launch.</li>
+    </ul>
+
+  </div>
+
+</doc-page>
+</x-dc>
+</body>
+</html>

@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 
 function Splash() {
-  return <div style={{ padding: 48, fontFamily: "monospace", color: "#6B7280" }}>Loading…</div>;
+  return <div style={{ padding: 48, fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif", color: "#7A736B" }}>Loading…</div>;
 }
 export function RequireAuth({ children }: { children: JSX.Element }) {
   const { session, loading } = useAuth();

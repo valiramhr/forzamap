@@ -6,13 +6,15 @@ export default function AdminNav() {
   const { signOut } = useAuth();
   const { pathname } = useLocation();
   const link = (to: string, label: string) => (
-    <Link to={to} className="font-mono" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".05em", textDecoration: "none", color: pathname === to ? INK : MUTED, borderBottom: pathname === to ? `2px solid ${INK}` : "2px solid transparent", paddingBottom: 4 }}>{label}</Link>
+    <Link to={to} className="font-label" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".07em", textDecoration: "none", color: pathname === to ? INK : MUTED, borderBottom: pathname === to ? `2px solid ${INK}` : "2px solid transparent", paddingBottom: 4 }}>{label}</Link>
   );
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 24, padding: "16px 24px", borderBottom: `1px solid ${HAIR}`, background: PAPER, position: "sticky", top: 0, zIndex: 5 }}>
+      {/* 88px is the brand minimum width for the lockup — never render it narrower. */}
+      <img src="/brand/forzamap-lockup.svg" alt="ForzaMap" style={{ width: 88, height: "auto", display: "block" }} />
       {link("/admin", "Invite")}
       {link("/admin/candidates", "Candidates")}
-      <button onClick={signOut} className="font-mono" style={{ marginLeft: "auto", fontSize: 12, textTransform: "uppercase", color: MUTED, background: "none", border: "none", cursor: "pointer" }}>Sign out</button>
+      <button onClick={signOut} className="font-label" style={{ marginLeft: "auto", fontSize: 12, textTransform: "uppercase", letterSpacing: ".07em", color: MUTED, background: "none", border: "none", cursor: "pointer" }}>Sign out</button>
     </div>
   );
 }

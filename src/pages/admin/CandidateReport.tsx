@@ -30,10 +30,10 @@ export default function CandidateReport() {
   return (
     <div style={{ minHeight: "100vh", background: PAPER }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, borderBottom: `1px solid ${HAIR}`, position: "sticky", top: 0, background: PAPER, zIndex: 5 }}>
-        <Link to="/admin/candidates" className="font-mono" style={{ fontSize: 12, textTransform: "uppercase", color: MUTED, textDecoration: "none" }}>← Candidates</Link>
+        <Link to="/admin/candidates" className="font-label" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".07em", color: MUTED, textDecoration: "none" }}>← Candidates</Link>
         {result && (
           <PDFDownloadLink document={<ReportPDF result={result} name={name} />} fileName={`${(name ?? "candidate").replace(/\W+/g, "-")}-strengths.pdf`}
-            className="font-mono" style={{ marginLeft: "auto", padding: "10px 16px", background: INK, color: PAPER, fontSize: 12, letterSpacing: ".05em", textTransform: "uppercase", textDecoration: "none" }}>
+            className="font-label" style={{ marginLeft: "auto", padding: "10px 16px", background: INK, color: PAPER, fontSize: 12, letterSpacing: ".07em", textTransform: "uppercase", textDecoration: "none" }}>
             {({ loading }: { loading: boolean }) => (loading ? "Preparing PDF…" : "Download PDF")}
           </PDFDownloadLink>
         )}
@@ -45,5 +45,5 @@ export default function CandidateReport() {
   );
 }
 function Center({ children }: { children: React.ReactNode }) {
-  return <div style={{ padding: 64, textAlign: "center", fontFamily: "monospace", color: MUTED }}>{children}</div>;
+  return <div style={{ padding: 64, textAlign: "center", fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif", color: MUTED }}>{children}</div>;
 }

@@ -3,8 +3,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        serif: ["Georgia", "Times New Roman", "serif"],
-        mono: ["ui-monospace", "SF Mono", "Menlo", "monospace"],
+        sans: ["Archivo", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
       },
     },
   },
