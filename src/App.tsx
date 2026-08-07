@@ -7,6 +7,7 @@ import Result from "./pages/Result";
 import Invites from "./pages/admin/Invites";
 import Candidates from "./pages/admin/Candidates";
 import CandidateReport from "./pages/admin/CandidateReport";
+import PreviewParadox from "./pages/PreviewParadox";
 
 function DefaultRoute() {
   const { session, isAdmin, loading } = useAuth();
@@ -24,6 +25,8 @@ export default function App() {
       <Route path="/admin" element={<RequireAdmin><Invites /></RequireAdmin>} />
       <Route path="/admin/candidates" element={<RequireAdmin><Candidates /></RequireAdmin>} />
       <Route path="/admin/candidates/:id" element={<RequireAdmin><CandidateReport /></RequireAdmin>} />
+      {/* Unguarded layout preview for the Paradox Profile — mock data, no database. */}
+      <Route path="/preview/paradox" element={<PreviewParadox />} />
       <Route path="*" element={<DefaultRoute />} />
     </Routes>
   );
