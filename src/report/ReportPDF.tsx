@@ -31,6 +31,10 @@ try {
    so each display style carries its own size × -0.035. */
 const display = { fontFamily: DISPLAY, fontWeight: DISPLAY_WEIGHT };
 
+/* Font.register is global and one-shot, so other documents import the resolved
+   families from here rather than registering Archivo a second time. */
+export const PDF_FONTS = { base: BASE, display: DISPLAY, displayWeight: DISPLAY_WEIGHT };
+
 const s = StyleSheet.create({
   page: { padding: 48, backgroundColor: PAPER, fontSize: 11, color: INK, fontFamily: BASE },
   eyebrow: { fontSize: 9, letterSpacing: 2, color: MUTED, textTransform: "uppercase", marginBottom: 8 },
