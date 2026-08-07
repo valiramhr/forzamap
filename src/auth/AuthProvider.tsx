@@ -13,11 +13,18 @@ const Ctx = createContext<AuthState>({
 });
 export const useAuth = () => useContext(Ctx);
 
+// `resolvedForUserId` is the user id `isAdmin` was looked up for; `undefined` until
+// the first lookup settles. Readiness is derived from it rather than stored as its own
+// flag, so a session change makes the state not-ready in the very same render.
+interface AdminState {
+  resolvedForUserId: string | null | undefined;
+  isAdmin: boolean;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [admin, setAdmin] = useState<AdminState>({ resolvedForUserId: undefined, isAdmin: false });
   const [authReady, setAuthReady] = useState(false);
-  const [adminReady, setAdminReady] = useState(false);
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
@@ -31,19 +38,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  const userId = session?.user.id ?? null;
+
   useEffect(() => {
     if (!authReady) return;
+    if (!userId) { setAdmin({ resolvedForUserId: null, isAdmin: false }); return; }
     let alive = true;
-    setAdminReady(false);
     (async () => {
-      if (!session) { if (alive) { setIsAdmin(false); setAdminReady(true); } return; }
       const { data } = await supabase
-        .from("admins").select("user_id").eq("user_id", session.user.id).maybeSingle();
-      if (alive) { setIsAdmin(!!data); setAdminReady(true); }
+        .from("admins").select("user_id").eq("user_id", userId).maybeSingle();
+      if (alive) setAdmin({ resolvedForUserId: userId, isAdmin: !!data });
     })();
     return () => { alive = false; };
-  }, [session, authReady]);
+  }, [userId, authReady]);
 
+  const adminReady = admin.resolvedForUserId === userId;
+  const isAdmin = adminReady && admin.isAdmin;
   const loading = !authReady || !adminReady;
   const signOut = async () => { await supabase.auth.signOut(); };
 
