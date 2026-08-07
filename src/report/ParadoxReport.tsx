@@ -3,8 +3,12 @@ import { PARADOX_ORDER, type Result } from "../lib/paradox";
 import { INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
 
 export default function ParadoxReport({ result, name }: { result: Result; name?: string | null }) {
-  const { zones, consistency, flaggedCount, thresholdMode, overallMean } = result;
+  const { zoneCounts, consistency, flaggedCount, thresholdMode, overallMean } = result;
   const byKey = new Map(result.paradoxes.map((p) => [p.key, p]));
+  /* result.flaggedCount counts flagged *traits*; a pair is flagged when either
+     of its two traits is, so the panel count is its own tally. */
+  const flaggedPairs = result.paradoxes.filter((p) => p.flagged).length;
+  const oneSided = zoneCounts.oneSidedDynamic + zoneCounts.oneSidedGentle;
 
   return (
     <div style={{ maxWidth: 1120, margin: "0 auto", padding: "40px 24px", fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif" }}>
@@ -19,8 +23,9 @@ export default function ParadoxReport({ result, name }: { result: Result; name?:
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 28px", alignItems: "baseline", padding: "16px 0", borderTop: `1px solid ${HAIR}`, borderBottom: `1px solid ${HAIR}`, marginBottom: 20 }}>
         <Stat label="Consistency" value={consistency} tone={consistency === "Low" ? FORZA : INK} />
-        <Stat label="Flagged pairs" value={String(flaggedCount)} tone={flaggedCount > 0 ? FORZA : INK} />
-        <Stat label="Zones" value={`${zones.balanced} balanced · ${zones.oneSided} one-sided · ${zones.deficient} deficient`} tone={INK} />
+        <Stat label="Flagged pairs" value={`${flaggedPairs} of 12`} tone={flaggedPairs > 0 ? FORZA : INK} />
+        <Stat label="Flagged traits" value={`${flaggedCount} of 24`} tone={flaggedCount > 0 ? FORZA : INK} />
+        <Stat label="Zones" value={`${zoneCounts.balanced} balanced · ${oneSided} one-sided · ${zoneCounts.deficient} deficient`} tone={INK} />
       </div>
 
       {thresholdMode === "personCentred" && (

@@ -1,363 +1,326 @@
-/* Paradox Profile — 12 leadership paradoxes, each a pair of opposed traits.
-   Every paradox pits a "dynamic" pole (forceful, agentic) against a "gentle"
-   pole (receptive, communal). Neither pole is the good one: the model reads a
-   person by where they sit on BOTH at once, which is why the report plots each
-   pair as a quadrant rather than a single bar.
-
-   Self-report, 1–10 agreement scale, 5 items per trait (3 keyed positive,
-   2 keyed reverse). The reverse items are the consistency check: someone who
-   agrees with both "I state what I want without hedging" and "I hold back
-   rather than push my view" is not answering the trait, and the pair gets
-   flagged rather than scored confidently. */
-
-export type Pole = "dynamic" | "gentle";
-
-export type ParadoxKey =
-  | "authority" | "momentum" | "selfRegard" | "judgement"
-  | "candour" | "control" | "tempo" | "risk"
-  | "horizon" | "development" | "course" | "belonging";
-
-export type TraitKey =
-  | "assertiveness" | "receptiveness"
-  | "drive" | "patience"
-  | "confidence" | "humility"
-  | "decisiveness" | "deliberation"
-  | "candour" | "diplomacy"
-  | "direction" | "delegation"
-  | "urgency" | "composure"
-  | "boldness" | "prudence"
-  | "vision" | "realism"
-  | "challenge" | "support"
-  | "persistence" | "adaptability"
-  | "independence" | "collaboration";
-
-/* Where a person sits in a paradox. Named for the reading, not the geometry:
-   the plot puts dynamic on y and gentle on x, so oneSidedDynamic is top-left,
-   balanced top-right, deficient bottom-left, oneSidedGentle bottom-right. */
-export type Quadrant = "oneSidedDynamic" | "balanced" | "deficient" | "oneSidedGentle";
-
-/* fixed        — boundaries at the scale midpoint, 5.5 on both axes.
-   personCentred — boundaries at this person's own mean across all 24 traits,
-                   so the quadrants describe their profile's internal shape
-                   rather than their standing against anyone else. */
-export type ThresholdMode = "fixed" | "personCentred";
+/* Paradox Profile — original instrument for internal talent discussion.
+   12 paradoxes, 24 traits, 120 items, 10-point Likert.
+   Not affiliated with, and using no content from, Harrison Assessments.
+   See paradox-methodology.md for the full method. */
 
 export const SCALE_MIN = 1;
 export const SCALE_MAX = 10;
-const MIDPOINT = (SCALE_MIN + SCALE_MAX) / 2; // 5.5
+const REVERSE_CONSTANT = SCALE_MIN + SCALE_MAX; // 11 - x
 
-/* Within-trait SD at or above which the trait's responses are treated as
-   internally contradictory. Consistent answering with ordinary wobble lands
-   near 0.5; answering the positive and reverse items in the same direction
-   forces the recoded values apart and lands near 2.4. */
-export const FLAG_SD = 1.8;
+export const NEUTRAL = 5.5;              // fixed-threshold quadrant boundary
+export const CONSISTENCY_FLAG_GAP = 3.5; // |P - R| above this flags a trait
 
-export interface TraitDef { key: TraitKey; name: string; pole: Pole; paradox: ParadoxKey }
+export type ParadoxKey =
+  | "influence" | "communication" | "decisionMaking" | "execution"
+  | "performance" | "teamContribution" | "leadership" | "standards"
+  | "risk" | "learning" | "problemSolving" | "resilience";
 
-export interface ParadoxDef {
-  key: ParadoxKey;
+export type TraitKey =
+  | "assertiveness" | "receptiveness"
+  | "frankness" | "diplomacy"
+  | "decisiveness" | "reflectiveness"
+  | "structure" | "adaptability"
+  | "drive" | "patience"
+  | "independence" | "collaboration"
+  | "direction" | "empowerment"
+  | "accountability" | "empathy"
+  | "courage" | "prudence"
+  | "confidence" | "curiosity"
+  | "practicality" | "creativity"
+  | "persistence" | "recovery";
+
+export type Quadrant = "balanced" | "oneSidedDynamic" | "oneSidedGentle" | "deficient";
+
+export interface Paradox {
   name: string;
-  dynamic: TraitKey;
-  gentle: TraitKey;
+  dynamic: TraitKey;          // y-axis
+  gentle: TraitKey;           // x-axis
   labels: Record<Quadrant, string>;
-  tension: string;
 }
 
-export const PARADOX_ORDER: ParadoxKey[] = [
-  "authority", "momentum", "selfRegard", "judgement",
-  "candour", "control", "tempo", "risk",
-  "horizon", "development", "course", "belonging",
-];
-
-export const PARADOXES: Record<ParadoxKey, ParadoxDef> = {
-  authority: {
-    key: "authority", name: "Assert & Listen",
-    dynamic: "assertiveness", gentle: "receptiveness",
+export const PARADOXES: Record<ParadoxKey, Paradox> = {
+  influence: {
+    name: "Influence", dynamic: "assertiveness", gentle: "receptiveness",
     labels: {
-      oneSidedDynamic: "Domineering", balanced: "Persuasive Listener",
-      deficient: "Disengaged", oneSidedGentle: "Deferential",
+      oneSidedDynamic: "Dominating Advocate", balanced: "Constructive Challenger",
+      deficient: "Detached Contributor", oneSidedGentle: "Accommodating Listener",
     },
-    tension: "Holding a position while staying genuinely open to being moved off it.",
   },
-  momentum: {
-    key: "momentum", name: "Drive & Patience",
-    dynamic: "drive", gentle: "patience",
+  communication: {
+    name: "Communication", dynamic: "frankness", gentle: "diplomacy",
     labels: {
-      oneSidedDynamic: "Relentless", balanced: "Steady Momentum",
-      deficient: "Drifting", oneSidedGentle: "Passive",
+      oneSidedDynamic: "Blunt Truth-teller", balanced: "Candid Diplomat",
+      deficient: "Indirect Communicator", oneSidedGentle: "Tactful Avoider",
     },
-    tension: "Pushing for results without forcing work that needs time.",
   },
-  selfRegard: {
-    key: "selfRegard", name: "Confidence & Humility",
-    dynamic: "confidence", gentle: "humility",
+  decisionMaking: {
+    name: "Decision-making", dynamic: "decisiveness", gentle: "reflectiveness",
     labels: {
-      oneSidedDynamic: "Arrogant", balanced: "Grounded Confidence",
-      deficient: "Uncertain", oneSidedGentle: "Self-Effacing",
+      oneSidedDynamic: "Impulsive Decider", balanced: "Considered Decision-Maker",
+      deficient: "Decision Avoider", oneSidedGentle: "Analytical Delayer",
     },
-    tension: "Backing your judgement while assuming you have missed something.",
   },
-  judgement: {
-    key: "judgement", name: "Decide & Deliberate",
-    dynamic: "decisiveness", gentle: "deliberation",
+  execution: {
+    name: "Execution", dynamic: "structure", gentle: "adaptability",
     labels: {
-      oneSidedDynamic: "Impulsive", balanced: "Considered & Decisive",
-      deficient: "Indecisive", oneSidedGentle: "Over-Analytical",
+      oneSidedDynamic: "Rigid Controller", balanced: "Agile Planner",
+      deficient: "Reactive Operator", oneSidedGentle: "Flexible Improviser",
     },
-    tension: "Making the call on time without skipping the thinking.",
   },
-  candour: {
-    key: "candour", name: "Candour & Diplomacy",
-    dynamic: "candour", gentle: "diplomacy",
+  performance: {
+    name: "Performance", dynamic: "drive", gentle: "patience",
     labels: {
-      oneSidedDynamic: "Blunt", balanced: "Honest & Tactful",
-      deficient: "Evasive", oneSidedGentle: "Guarded",
+      oneSidedDynamic: "Impatient Driver", balanced: "Sustainable Achiever",
+      deficient: "Low-pace Contributor", oneSidedGentle: "Supportive Stabiliser",
     },
-    tension: "Saying the hard thing in a way the other person can use.",
   },
-  control: {
-    key: "control", name: "Direct & Delegate",
-    dynamic: "direction", gentle: "delegation",
+  teamContribution: {
+    name: "Team contribution", dynamic: "independence", gentle: "collaboration",
     labels: {
-      oneSidedDynamic: "Micromanaging", balanced: "Empowering Direction",
-      deficient: "Absent", oneSidedGentle: "Hands-Off",
+      oneSidedDynamic: "Lone Operator", balanced: "Interdependent Performer",
+      deficient: "Dependent Individualist", oneSidedGentle: "Consensus Seeker",
     },
-    tension: "Setting a clear standard and then letting people own the work.",
   },
-  tempo: {
-    key: "tempo", name: "Urgency & Composure",
-    dynamic: "urgency", gentle: "composure",
+  leadership: {
+    name: "Leadership", dynamic: "direction", gentle: "empowerment",
     labels: {
-      oneSidedDynamic: "Frantic", balanced: "Calm Under Pressure",
-      deficient: "Sluggish", oneSidedGentle: "Unhurried",
+      oneSidedDynamic: "Controlling Director", balanced: "Enabling Leader",
+      deficient: "Absent Leader", oneSidedGentle: "Hands-Off Delegator",
     },
-    tension: "Moving fast without transmitting your own stress to everyone else.",
+  },
+  standards: {
+    name: "Standards", dynamic: "accountability", gentle: "empathy",
+    labels: {
+      oneSidedDynamic: "Rigid Enforcer", balanced: "Fair Leader",
+      deficient: "Passive Manager", oneSidedGentle: "Compassionate Avoider",
+    },
   },
   risk: {
-    key: "risk", name: "Boldness & Prudence",
-    dynamic: "boldness", gentle: "prudence",
+    name: "Risk", dynamic: "courage", gentle: "prudence",
     labels: {
-      oneSidedDynamic: "Reckless", balanced: "Calculated Risk",
-      deficient: "Aimless", oneSidedGentle: "Risk-Averse",
+      oneSidedDynamic: "Reckless Challenger", balanced: "Calculated Risk-Taker",
+      deficient: "Disengaged Observer", oneSidedGentle: "Over-cautious Protector",
     },
-    tension: "Taking the bet you have actually costed.",
   },
-  horizon: {
-    key: "horizon", name: "Vision & Realism",
-    dynamic: "vision", gentle: "realism",
+  learning: {
+    name: "Learning", dynamic: "confidence", gentle: "curiosity",
     labels: {
-      oneSidedDynamic: "Unmoored", balanced: "Grounded Vision",
-      deficient: "Short-Sighted", oneSidedGentle: "Literal",
+      oneSidedDynamic: "Certain Expert", balanced: "Confident Learner",
+      deficient: "Stagnant Beginner", oneSidedGentle: "Inquiring Doubter",
     },
-    tension: "Describing a future that the present can actually reach.",
   },
-  development: {
-    key: "development", name: "Challenge & Support",
-    dynamic: "challenge", gentle: "support",
+  problemSolving: {
+    name: "Problem-solving", dynamic: "practicality", gentle: "creativity",
     labels: {
-      oneSidedDynamic: "Harsh", balanced: "Stretching & Safe",
-      deficient: "Indifferent", oneSidedGentle: "Protective",
+      oneSidedDynamic: "Conventional Executor", balanced: "Pragmatic Innovator",
+      deficient: "Unproductive Thinker", oneSidedGentle: "Imaginative Idealist",
     },
-    tension: "Asking more of people than they would ask of themselves, safely.",
   },
-  course: {
-    key: "course", name: "Persist & Adapt",
-    dynamic: "persistence", gentle: "adaptability",
+  resilience: {
+    name: "Resilience", dynamic: "persistence", gentle: "recovery",
     labels: {
-      oneSidedDynamic: "Rigid", balanced: "Flexible Resolve",
-      deficient: "Inconsistent", oneSidedGentle: "Pliable",
+      oneSidedDynamic: "Relentless Striver", balanced: "Resilient Perseverer",
+      deficient: "Discouraged Deflater", oneSidedGentle: "Quick Rebounder",
     },
-    tension: "Holding the course while reading the evidence that it should change.",
-  },
-  belonging: {
-    key: "belonging", name: "Independence & Collaboration",
-    dynamic: "independence", gentle: "collaboration",
-    labels: {
-      oneSidedDynamic: "Lone Operator", balanced: "Connected Autonomy",
-      deficient: "Adrift", oneSidedGentle: "Dependent",
-    },
-    tension: "Thinking for yourself without cutting yourself off.",
   },
 };
 
-export const TRAITS: Record<TraitKey, TraitDef> = (() => {
-  const out = {} as Record<TraitKey, TraitDef>;
-  const label: Record<TraitKey, string> = {
-    assertiveness: "Assertiveness", receptiveness: "Receptiveness",
-    drive: "Drive", patience: "Patience",
-    confidence: "Confidence", humility: "Humility",
-    decisiveness: "Decisiveness", deliberation: "Deliberation",
-    candour: "Candour", diplomacy: "Diplomacy",
-    direction: "Direction", delegation: "Delegation",
-    urgency: "Urgency", composure: "Composure",
-    boldness: "Boldness", prudence: "Prudence",
-    vision: "Vision", realism: "Realism",
-    challenge: "Challenge", support: "Support",
-    persistence: "Persistence", adaptability: "Adaptability",
-    independence: "Independence", collaboration: "Collaboration",
-  };
-  PARADOX_ORDER.forEach((pk) => {
+export const PARADOX_ORDER: ParadoxKey[] = [
+  "influence", "communication", "decisionMaking", "execution",
+  "performance", "teamContribution", "leadership", "standards",
+  "risk", "learning", "problemSolving", "resilience",
+];
+
+export const TRAITS: Record<TraitKey, { name: string; paradox: ParadoxKey; pole: "dynamic" | "gentle" }> =
+  PARADOX_ORDER.reduce((acc, pk) => {
     const p = PARADOXES[pk];
-    out[p.dynamic] = { key: p.dynamic, name: label[p.dynamic], pole: "dynamic", paradox: pk };
-    out[p.gentle] = { key: p.gentle, name: label[p.gentle], pole: "gentle", paradox: pk };
-  });
-  return out;
-})();
+    acc[p.dynamic] = { name: titleise(p.dynamic), paradox: pk, pole: "dynamic" };
+    acc[p.gentle] = { name: titleise(p.gentle), paradox: pk, pole: "gentle" };
+    return acc;
+  }, {} as Record<TraitKey, { name: string; paradox: ParadoxKey; pole: "dynamic" | "gentle" }>);
 
-/* Trait order follows PARADOX_ORDER, dynamic pole then gentle pole. */
-export const TRAIT_ORDER: TraitKey[] = PARADOX_ORDER.flatMap((k) => [PARADOXES[k].dynamic, PARADOXES[k].gentle]);
+function titleise(k: string) {
+  return k.charAt(0).toUpperCase() + k.slice(1);
+}
 
-const POS: Record<TraitKey, string[]> = {
+/* ── item bank: 3 positive + 2 reverse per trait ──────────────────────── */
+
+interface Statement { s: string; r: boolean }
+
+const BANK: Record<TraitKey, Statement[]> = {
   assertiveness: [
-    "I state what I want without hedging",
-    "I press my point when it matters",
-    "I take charge when a group needs direction",
+    { s: "I express my position even when others may disagree.", r: false },
+    { s: "I am comfortable challenging a decision that I believe is flawed.", r: false },
+    { s: "I speak up early rather than waiting to see which way a discussion goes.", r: false },
+    { s: "I sometimes keep my views to myself to avoid resistance.", r: true },
+    { s: "I let others carry the discussion rather than putting my own view forward.", r: true },
   ],
   receptiveness: [
-    "I change my mind when someone makes a better case",
-    "I ask questions before I argue",
-    "I genuinely want to hear the objection",
+    { s: "I actively seek perspectives that differ from my own.", r: false },
+    { s: "I can change my mind when someone presents stronger reasoning.", r: false },
+    { s: "I ask people to explain their reasoning before I evaluate their conclusion.", r: false },
+    { s: "Once I have formed an opinion, further discussion rarely changes it.", r: true },
+    { s: "I tend to hear out other views without really weighing them.", r: true },
   ],
-  drive: [
-    "I keep pushing until the work is done",
-    "I set a demanding pace for myself",
-    "I am after the next result before the last one has settled",
-  ],
-  patience: [
-    "I can wait for the right moment to act",
-    "I let slow work take the time it needs",
-    "I stay steady when progress is gradual",
-  ],
-  confidence: [
-    "I back my own judgement under pressure",
-    "I speak with conviction about what I know",
-    "I am comfortable being the one who decides",
-  ],
-  humility: [
-    "I say plainly when I have got something wrong",
-    "I credit others for work I was part of",
-    "I assume there is something I have not seen",
-  ],
-  decisiveness: [
-    "I make the call when a decision is overdue",
-    "I am comfortable deciding on partial information",
-    "I close open questions rather than leave them",
-  ],
-  deliberation: [
-    "I weigh the options before I commit",
-    "I look for what a decision might cost",
-    "I sleep on choices that matter",
-  ],
-  candour: [
-    "I say the difficult thing directly",
-    "I give feedback people would rather not hear",
-    "I name the problem in the room",
+  frankness: [
+    { s: "I tell people clearly when their work does not meet expectations.", r: false },
+    { s: "I prefer an uncomfortable truth to a comfortable half-answer.", r: false },
+    { s: "I raise concerns directly with the person involved rather than around them.", r: false },
+    { s: "I soften difficult messages so much that the main point can be lost.", r: true },
+    { s: "I avoid saying things that might create an awkward moment.", r: true },
   ],
   diplomacy: [
-    "I choose my words with the listener in mind",
-    "I deliver hard messages without doing damage",
-    "I read the room before I speak",
+    { s: "I consider how my words will affect the other person.", r: false },
+    { s: "I can disagree without making the disagreement personal.", r: false },
+    { s: "I choose my timing so that difficult feedback can actually be heard.", r: false },
+    { s: "When I am convinced I am right, how I communicate matters less.", r: true },
+    { s: "I say what I think without spending much thought on how it lands.", r: true },
   ],
-  direction: [
-    "I set a clear standard for how work is done",
-    "I make sure people know what is expected",
-    "I step in when work drifts off course",
+  decisiveness: [
+    { s: "I am prepared to make decisions with incomplete information.", r: false },
+    { s: "I provide clear direction when others are uncertain.", r: false },
+    { s: "I commit to a course of action once the key facts are in.", r: false },
+    { s: "I delay decisions because I want to eliminate every uncertainty.", r: true },
+    { s: "I put off choices in the hope that the situation will resolve itself.", r: true },
   ],
-  delegation: [
-    "I hand work over and let people run it",
-    "I trust others to do it their own way",
-    "I resist the urge to take a task back",
+  reflectiveness: [
+    { s: "I examine several explanations before reaching a conclusion.", r: false },
+    { s: "I consider the second-order consequences of important decisions.", r: false },
+    { s: "I revisit my assumptions when the stakes of a decision are high.", r: false },
+    { s: "Once an obvious solution appears, further analysis is usually unnecessary.", r: true },
+    { s: "I move on from a decision without reviewing how it turned out.", r: true },
   ],
-  urgency: [
-    "I move on things the day they land",
-    "I create pressure to get a decision made",
-    "I treat a delay as a problem to solve",
-  ],
-  composure: [
-    "I stay level when a situation heats up",
-    "I think clearly when the pressure is on",
-    "I slow my own reactions before responding",
-  ],
-  boldness: [
-    "I back an option that could fail",
-    "I would rather try and learn than wait and be sure",
-    "I commit to moves others find uncomfortable",
-  ],
-  prudence: [
-    "I think through what could go wrong",
-    "I protect against the worst case",
-    "I check the ground before I step on it",
-  ],
-  vision: [
-    "I work towards a picture of where this ends up",
-    "I describe a future others can see",
-    "I think several years out",
-  ],
-  realism: [
-    "I test an idea against what is actually possible",
-    "I name the constraint everyone is ignoring",
-    "I plan from the resources we really have",
-  ],
-  challenge: [
-    "I ask more of people than they would ask of themselves",
-    "I hold a high bar even when it is unpopular",
-    "I push back on work that is not good enough",
-  ],
-  support: [
-    "I make it safe to admit a problem early",
-    "I back people publicly when they are struggling",
-    "I notice when someone is carrying too much",
-  ],
-  persistence: [
-    "I stay with a course when it gets hard",
-    "I see a commitment through past the point of ease",
-    "I do not abandon a plan at the first setback",
+  structure: [
+    { s: "I translate broad goals into clear steps and timelines.", r: false },
+    { s: "I keep track of commitments without needing others to remind me.", r: false },
+    { s: "I set up systems that make progress visible to everyone involved.", r: false },
+    { s: "Detailed planning tends to restrict rather than help me.", r: true },
+    { s: "I start work without mapping out how the pieces fit together.", r: true },
   ],
   adaptability: [
-    "I change approach when the evidence changes",
-    "I let go of a plan that is not working",
-    "I am comfortable when the goalposts move",
+    { s: "I adjust quickly when priorities or circumstances change.", r: false },
+    { s: "I remain effective when instructions are unclear.", r: false },
+    { s: "I find a workable path when the original plan stops being viable.", r: false },
+    { s: "Sudden changes significantly reduce the quality of my work.", r: true },
+    { s: "I need things to settle back into a routine before I regain my footing.", r: true },
+  ],
+  drive: [
+    { s: "I naturally push myself and others toward ambitious results.", r: false },
+    { s: "I look for ways to move work forward faster.", r: false },
+    { s: "I set targets beyond what is required of me.", r: false },
+    { s: "I am satisfied when expectations have been met.", r: true },
+    { s: "I ease off once the work is good enough to pass.", r: true },
+  ],
+  patience: [
+    { s: "I remain composed when progress is slower than expected.", r: false },
+    { s: "I allow people enough time to understand and improve.", r: false },
+    { s: "I stay with a slow process when rushing it would cost quality.", r: false },
+    { s: "I can become frustrated when others cannot match my pace.", r: true },
+    { s: "I show my irritation when things take longer than they should.", r: true },
   ],
   independence: [
-    "I can hold a position no one else supports",
-    "I work well without needing agreement",
-    "I am willing to be the outlier",
+    { s: "I am comfortable taking ownership without constant guidance.", r: false },
+    { s: "I form my own judgement rather than simply following the group.", r: false },
+    { s: "I make progress on my own when direction is not forthcoming.", r: false },
+    { s: "I feel uneasy proceeding when no one has endorsed my view.", r: true },
+    { s: "I wait for someone to confirm my approach before I act on it.", r: true },
   ],
   collaboration: [
-    "I bring others in early rather than present a finished answer",
-    "I share credit and ownership by default",
-    "I build on other people's work rather than replace it",
+    { s: "I involve others when their contribution could improve the outcome.", r: false },
+    { s: "I share relevant information even when I could complete the task alone.", r: false },
+    { s: "I build on other people's ideas rather than replacing them with my own.", r: false },
+    { s: "Working with others who are less competent slows down what I could do myself.", r: true },
+    { s: "I keep work to myself rather than bringing others into it.", r: true },
+  ],
+  direction: [
+    { s: "I clarify responsibilities when a team lacks direction.", r: false },
+    { s: "I am willing to take charge during difficult situations.", r: false },
+    { s: "I set a clear standard for what good work looks like.", r: false },
+    { s: "I hold back from taking charge even when a group is drifting.", r: true },
+    { s: "I leave expectations open rather than stating them plainly.", r: true },
+  ],
+  empowerment: [
+    { s: "I give people room to decide how their work should be done.", r: false },
+    { s: "I delegate meaningful responsibility rather than only routine work.", r: false },
+    { s: "I let people learn from decisions I would have made differently.", r: false },
+    { s: "Important work should be closely controlled to prevent mistakes.", r: true },
+    { s: "I step in and take over when I could let someone work it through.", r: true },
+  ],
+  accountability: [
+    { s: "I address missed commitments rather than allowing them to pass.", r: false },
+    { s: "I expect people to take responsibility for the consequences of their actions.", r: false },
+    { s: "I follow through on consequences I have said would apply.", r: false },
+    { s: "I find reasons not to raise a performance problem.", r: true },
+    { s: "I let repeated shortfalls go unaddressed.", r: true },
+  ],
+  empathy: [
+    { s: "I try to understand what may be affecting someone's behaviour.", r: false },
+    { s: "I distinguish between someone who cannot perform and someone who will not.", r: false },
+    { s: "I notice when someone is struggling before they say so.", r: false },
+    { s: "Personal circumstances should rarely influence how performance is handled.", r: true },
+    { s: "I focus on the outcome without considering what the person is dealing with.", r: true },
+  ],
+  courage: [
+    { s: "I am willing to try an unproven approach when the potential benefit is worthwhile.", r: false },
+    { s: "I raise difficult issues even when doing so carries personal risk.", r: false },
+    { s: "I act on a decision that may not be popular when I believe it is right.", r: false },
+    { s: "I generally choose the safest option when outcomes are uncertain.", r: true },
+    { s: "I hold back from action until someone else has taken the risk first.", r: true },
+  ],
+  prudence: [
+    { s: "I assess possible downsides before committing significant resources.", r: false },
+    { s: "I establish safeguards when experimenting with new approaches.", r: false },
+    { s: "I test on a small scale before committing fully.", r: false },
+    { s: "Working through what could go wrong is usually unnecessary detail.", r: true },
+    { s: "I commit resources without working through what could go wrong.", r: true },
+  ],
+  confidence: [
+    { s: "I trust my ability to handle unfamiliar challenges.", r: false },
+    { s: "I remain composed when my capability is being evaluated.", r: false },
+    { s: "I take on work that stretches beyond my current experience.", r: false },
+    { s: "I frequently doubt whether my judgement is good enough.", r: true },
+    { s: "I hesitate to act until someone reassures me I am on the right track.", r: true },
+  ],
+  curiosity: [
+    { s: "I enjoy discovering why things work the way they do.", r: false },
+    { s: "I ask questions even when others appear satisfied with the answer.", r: false },
+    { s: "I read or explore beyond what my role strictly requires.", r: false },
+    { s: "Once I become competent in an area, I see little need to explore it further.", r: true },
+    { s: "I take explanations at face value rather than looking further.", r: true },
+  ],
+  practicality: [
+    { s: "I focus on solutions that can realistically be implemented.", r: false },
+    { s: "I consider available time, people and resources when proposing an idea.", r: false },
+    { s: "I check that a proposal can be resourced before advocating for it.", r: false },
+    { s: "Delivery constraints can be worked out after a plan is agreed.", r: true },
+    { s: "I propose things without working out how they would actually be delivered.", r: true },
+  ],
+  creativity: [
+    { s: "I generate alternatives rather than accepting the first workable solution.", r: false },
+    { s: "I make connections between ideas that others may see as unrelated.", r: false },
+    { s: "I look for a different angle when the standard approach is not working.", r: false },
+    { s: "Once a workable answer exists, searching for another adds little.", r: true },
+    { s: "I stop searching once I have one solution that works.", r: true },
+  ],
+  persistence: [
+    { s: "I continue working toward an important objective despite repeated setbacks.", r: false },
+    { s: "Difficult conditions tend to strengthen my determination.", r: false },
+    { s: "I keep going on long tasks after the initial interest has worn off.", r: false },
+    { s: "I lose momentum when my initial efforts do not produce results.", r: true },
+    { s: "I move on to something else when progress becomes hard.", r: true },
+  ],
+  recovery: [
+    { s: "I regain my effectiveness quickly after disappointment or failure.", r: false },
+    { s: "I can stop, reassess and change approach without seeing it as defeat.", r: false },
+    { s: "I return to full focus soon after something goes badly.", r: false },
+    { s: "A significant setback tends to affect my performance for a long time.", r: true },
+    { s: "I carry the effect of a bad outcome into the work that follows.", r: true },
   ],
 };
 
-const REV: Record<TraitKey, string[]> = {
-  assertiveness: ["I hold back rather than push my view", "I let others set the agenda"],
-  receptiveness: ["I have usually decided before the conversation starts", "Other people's input rarely shifts me"],
-  drive: ["I am content to let work find its own pace", "I ease off once things are good enough"],
-  patience: ["Waiting makes me restless", "I force things forward before they are ready"],
-  confidence: ["I second-guess myself in front of others", "I need reassurance before I commit"],
-  humility: ["I find it hard to admit a mistake", "I would rather look right than be corrected"],
-  decisiveness: ["I defer decisions hoping they resolve themselves", "I struggle to commit to one option"],
-  deliberation: ["I decide first and think it through later", "I skip the analysis and go with instinct"],
-  candour: ["I soften a message until the point is lost", "I avoid raising things that might upset someone"],
-  diplomacy: ["I say what I think regardless of how it lands", "I bruise people without meaning to"],
-  direction: ["I leave people to work out the standard themselves", "I avoid setting expectations for others"],
-  delegation: ["I check on work more often than it needs", "I would rather do it myself than hand it over"],
-  urgency: ["I let things sit longer than they should", "I am slow to react when something breaks"],
-  composure: ["I get rattled when things go wrong", "Pressure shows in how I speak to people"],
-  boldness: ["I avoid choices with real downside", "I stay with what is already proven"],
-  prudence: ["I take risks without counting the cost", "I skip the contingency and hope"],
-  vision: ["I rarely look beyond the current quarter", "Long-range thinking feels like a distraction"],
-  realism: ["I promise more than the situation allows", "I overlook the practical detail"],
-  challenge: ["I accept work I know could be better", "I lower the bar to keep things comfortable"],
-  support: ["I leave people to cope on their own", "I focus on the task and miss the person"],
-  persistence: ["I switch approach as soon as it gets difficult", "I lose interest before things pay off"],
-  adaptability: ["I stick to a plan after it stops making sense", "I find changes of direction hard to accept"],
-  independence: ["I need the group with me before I act", "I go along with the room to avoid standing out"],
-  collaboration: ["I would rather work alone than coordinate", "I keep my work to myself until it is done"],
-};
+/* ── item generation ──────────────────────────────────────────────────── */
 
-export interface Item { id: number; trait: TraitKey; text: string; reverse: boolean }
+export interface Item { id: number; trait: TraitKey; statement: string; reverse: boolean }
 export type Answers = Record<number, number>; // itemId -> 1..10
 
 function shuffle<T>(a: T[]): T[] {
@@ -368,126 +331,150 @@ function shuffle<T>(a: T[]): T[] {
   return a;
 }
 
-/* 120 items: 24 traits × (3 positive + 2 reverse), presented in random order so
-   a trait's own items are spread through the run. */
+/** 120 items in randomised order, so adjacent items rarely share a trait. */
 export function buildItems(): Item[] {
-  const items: Item[] = [];
-  TRAIT_ORDER.forEach((t) => {
-    POS[t].forEach((text) => items.push({ id: 0, trait: t, text, reverse: false }));
-    REV[t].forEach((text) => items.push({ id: 0, trait: t, text, reverse: true }));
+  const flat: Omit<Item, "id">[] = [];
+  (Object.keys(BANK) as TraitKey[]).forEach((t) => {
+    BANK[t].forEach((st) => flat.push({ trait: t, statement: st.s, reverse: st.r }));
   });
-  shuffle(items).forEach((it, i) => (it.id = i));
-  return items;
+  return shuffle(flat).map((it, i) => ({ ...it, id: i }));
+}
+
+/* ── scoring ──────────────────────────────────────────────────────────── */
+
+export type ThresholdMode = "fixed" | "personCentred" | "local";
+
+export interface ScoreOptions {
+  /** How the quadrant boundary is chosen. Default "personCentred". */
+  threshold?: ThresholdMode;
+  /** Per-trait boundaries, required when threshold === "local". */
+  localThresholds?: Partial<Record<TraitKey, number>>;
 }
 
 export interface TraitScore {
   key: TraitKey;
   name: string;
-  pole: Pole;
-  /** Mean of the trait's recoded responses, on the 1–10 scale. */
-  score: number;
-  /** Spread of those responses — the uncertainty band drawn around the point. */
-  sd: number;
-  /** How many of the trait's items were answered. */
-  n: number;
-  /** True when sd crosses FLAG_SD: the responses contradict one another. */
-  flagged: boolean;
+  score: number;        // 1..10, mean of 5 items
+  positiveMean: number; // mean of 3 positive items
+  reverseMean: number;  // mean of 2 reverse items, after conversion
+  gap: number;          // |positiveMean - reverseMean|
+  flagged: boolean;     // gap > CONSISTENCY_FLAG_GAP
+  sd: number;           // within-trait SD, for the uncertainty box
+  answered: number;     // items answered of 5
 }
 
 export interface ParadoxResult {
   key: ParadoxKey;
   name: string;
-  tension: string;
-  /** Plotted on y. */
   dynamic: TraitScore;
-  /** Plotted on x. */
   gentle: TraitScore;
-  /** Quadrant boundary on the gentle (x) axis — not necessarily 5.5. */
-  thresholdX: number;
-  /** Quadrant boundary on the dynamic (y) axis — not necessarily 5.5. */
-  thresholdY: number;
   quadrant: Quadrant;
-  /** PARADOXES[key].labels[quadrant], resolved for convenience. */
   label: string;
-  /** Either trait answered inconsistently — read the position with care. */
+  /** Boundaries actually used, for rendering the crosshair. */
+  thresholdX: number;
+  thresholdY: number;
+  /** True if either trait was flagged — render the point hollow. */
   flagged: boolean;
 }
 
-export interface ZoneCounts { balanced: number; oneSided: number; deficient: number }
-
 export interface Result {
   paradoxes: ParadoxResult[];
-  traitScores: TraitScore[];
-  /** This person's mean across all 24 traits — the personCentred boundary. */
+  traits: TraitScore[];
+  /** Mean across all 24 traits; the boundary under "personCentred". */
   overallMean: number;
   thresholdMode: ThresholdMode;
-  consistency: "High" | "Moderate" | "Low";
-  /** Paradoxes with at least one inconsistent trait. */
   flaggedCount: number;
-  zones: ZoneCounts;
+  consistency: "High" | "Moderate" | "Low";
+  zoneCounts: Record<Quadrant, number>;
+  completeness: number; // 0..1
 }
 
-export interface ScoreOptions { threshold?: ThresholdMode }
+function mean(xs: number[]) {
+  return xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
+}
+function stdev(xs: number[]) {
+  if (xs.length < 2) return 0;
+  const m = mean(xs);
+  return Math.sqrt(mean(xs.map((x) => (x - m) ** 2)));
+}
 
-function clamp(v: number, lo: number, hi: number) { return v < lo ? lo : v > hi ? hi : v; }
-
-function quadrantOf(x: number, y: number, tx: number, ty: number): Quadrant {
-  if (y >= ty) return x >= tx ? "balanced" : "oneSidedDynamic";
-  return x >= tx ? "oneSidedGentle" : "deficient";
+export function itemScore(response: number, reverse: boolean) {
+  return reverse ? REVERSE_CONSTANT - response : response;
 }
 
 export function score(items: Item[], answers: Answers, opts: ScoreOptions = {}): Result {
-  const mode: ThresholdMode = opts.threshold ?? "fixed";
+  const mode: ThresholdMode = opts.threshold ?? "personCentred";
 
-  /* Recode reverse items so every value points the same way: agreeing strongly
-     with a reverse item is evidence *against* the trait. */
-  const responses = {} as Record<TraitKey, number[]>;
-  TRAIT_ORDER.forEach((t) => (responses[t] = []));
+  const byTrait = {} as Record<TraitKey, { pos: number[]; rev: number[] }>;
+  (Object.keys(BANK) as TraitKey[]).forEach((t) => (byTrait[t] = { pos: [], rev: [] }));
+
+  let answered = 0;
   items.forEach((it) => {
-    const a = answers[it.id];
-    if (a == null || Number.isNaN(a)) return;
-    const v = clamp(a, SCALE_MIN, SCALE_MAX);
-    responses[it.trait].push(it.reverse ? SCALE_MIN + SCALE_MAX - v : v);
+    const raw = answers[it.id];
+    if (raw == null) return;
+    answered += 1;
+    const s = itemScore(raw, it.reverse);
+    (it.reverse ? byTrait[it.trait].rev : byTrait[it.trait].pos).push(s);
   });
 
-  const byTrait = {} as Record<TraitKey, TraitScore>;
-  const traitScores: TraitScore[] = TRAIT_ORDER.map((t) => {
-    const vals = responses[t];
-    const n = vals.length;
-    const mean = n ? vals.reduce((s, v) => s + v, 0) / n : MIDPOINT;
-    const variance = n ? vals.reduce((s, v) => s + (v - mean) ** 2, 0) / n : 0;
-    const sd = Math.sqrt(variance);
-    const ts: TraitScore = { key: t, name: TRAITS[t].name, pole: TRAITS[t].pole, score: mean, sd, n, flagged: sd >= FLAG_SD };
-    byTrait[t] = ts;
-    return ts;
-  });
-
-  const overallMean = traitScores.reduce((s, t) => s + t.score, 0) / traitScores.length;
-  const boundary = mode === "personCentred" ? overallMean : MIDPOINT;
-
-  const zones: ZoneCounts = { balanced: 0, oneSided: 0, deficient: 0 };
-  const paradoxes: ParadoxResult[] = PARADOX_ORDER.map((k) => {
-    const def = PARADOXES[k];
-    const dynamic = byTrait[def.dynamic];
-    const gentle = byTrait[def.gentle];
-    const quadrant = quadrantOf(gentle.score, dynamic.score, boundary, boundary);
-    if (quadrant === "balanced") zones.balanced += 1;
-    else if (quadrant === "deficient") zones.deficient += 1;
-    else zones.oneSided += 1;
+  const traits: TraitScore[] = (Object.keys(BANK) as TraitKey[]).map((t) => {
+    const { pos, rev } = byTrait[t];
+    const all = [...pos, ...rev];
+    const pm = mean(pos), rm = mean(rev);
+    const gap = pos.length && rev.length ? Math.abs(pm - rm) : 0;
     return {
-      key: k, name: def.name, tension: def.tension,
-      dynamic, gentle,
-      thresholdX: boundary, thresholdY: boundary,
-      quadrant, label: def.labels[quadrant],
-      flagged: dynamic.flagged || gentle.flagged,
+      key: t,
+      name: TRAITS[t].name,
+      score: mean(all),
+      positiveMean: pm,
+      reverseMean: rm,
+      gap,
+      flagged: gap > CONSISTENCY_FLAG_GAP,
+      sd: stdev(all),
+      answered: all.length,
     };
   });
 
-  const flaggedTraits = traitScores.filter((t) => t.flagged).length;
-  const consistency = flaggedTraits <= 1 ? "High" : flaggedTraits <= 3 ? "Moderate" : "Low";
+  const traitMap = traits.reduce((acc, t) => { acc[t.key] = t; return acc; },
+    {} as Record<TraitKey, TraitScore>);
+
+  const overallMean = mean(traits.map((t) => t.score));
+
+  const boundaryFor = (t: TraitKey) => {
+    if (mode === "fixed") return NEUTRAL;
+    if (mode === "local") return opts.localThresholds?.[t] ?? NEUTRAL;
+    return overallMean;
+  };
+
+  const zoneCounts: Record<Quadrant, number> = {
+    balanced: 0, oneSidedDynamic: 0, oneSidedGentle: 0, deficient: 0,
+  };
+
+  const paradoxes: ParadoxResult[] = PARADOX_ORDER.map((pk) => {
+    const p = PARADOXES[pk];
+    const dyn = traitMap[p.dynamic], gen = traitMap[p.gentle];
+    const ty = boundaryFor(p.dynamic), tx = boundaryFor(p.gentle);
+    const highY = dyn.score >= ty, highX = gen.score >= tx;
+    const quadrant: Quadrant =
+      highY && highX ? "balanced"
+        : highY ? "oneSidedDynamic"
+          : highX ? "oneSidedGentle"
+            : "deficient";
+    zoneCounts[quadrant] += 1;
+    return {
+      key: pk, name: p.name, dynamic: dyn, gentle: gen,
+      quadrant, label: p.labels[quadrant],
+      thresholdX: tx, thresholdY: ty,
+      flagged: dyn.flagged || gen.flagged,
+    };
+  });
+
+  const flaggedCount = traits.filter((t) => t.flagged).length;
+  const consistency = flaggedCount <= 3 ? "High" : flaggedCount <= 7 ? "Moderate" : "Low";
 
   return {
-    paradoxes, traitScores, overallMean, thresholdMode: mode,
-    consistency, flaggedCount: paradoxes.filter((p) => p.flagged).length, zones,
+    paradoxes, traits, overallMean, thresholdMode: mode,
+    flaggedCount, consistency, zoneCounts,
+    completeness: answered / items.length,
   };
 }

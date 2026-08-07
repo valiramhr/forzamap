@@ -150,6 +150,8 @@ function Panel({ p }: { p: ParadoxResult }) {
 export function ParadoxReportPDF({ result, name }: { result: Result; name?: string | null }) {
   const byKey = new Map(result.paradoxes.map((p) => [p.key, p]));
   const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  /* Pairs, not result.flaggedCount — that one counts traits. */
+  const flaggedPairs = result.paradoxes.filter((p) => p.flagged).length;
 
   return (
     <Document>
@@ -164,7 +166,7 @@ export function ParadoxReportPDF({ result, name }: { result: Result; name?: stri
             <Text style={s.meta}>{date}</Text>
             <Text style={[s.meta, result.consistency === "Low" ? { color: FORZA } : {}]}>
               Consistency {result.consistency}
-              {result.flaggedCount > 0 ? ` · ${result.flaggedCount} flagged` : ""}
+              {flaggedPairs > 0 ? ` · ${flaggedPairs} flagged ${flaggedPairs === 1 ? "pair" : "pairs"}` : ""}
             </Text>
           </View>
         </View>

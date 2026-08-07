@@ -4,7 +4,7 @@ const PDFDownloadLink = PDFDownloadLinkBase as unknown as (props: any) => JSX.El
 import ParadoxReport from "../report/ParadoxReport";
 import { ParadoxReportPDF } from "../report/ParadoxReportPDF";
 import {
-  buildItems, score, SCALE_MIN, SCALE_MAX,
+  buildItems, score, SCALE_MIN, SCALE_MAX, NEUTRAL, CONSISTENCY_FLAG_GAP,
   type Answers, type Item, type ThresholdMode,
 } from "../lib/paradox";
 import { PAPER, INK, MUTED, HAIR } from "../lib/ui";
@@ -33,10 +33,12 @@ function shuffle<T>(a: T[]): T[] {
    person-centred crosshair land on top of the fixed one and hides the
    difference between the two threshold modes.
 
-   Two traits are answered incoherently on purpose: their reverse items get the
-   same raw answer as their positive items, which after recoding pulls the
-   within-trait spread wide enough to trip the flag and exercise the
-   flagged-panel rendering. */
+   Some traits are answered incoherently on purpose: their reverse items get the
+   same raw answer as their positive items, so the two means diverge and the
+   trait trips the consistency flag, which exercises the flagged-panel
+   rendering. */
+const INCOHERENT_TRAITS = 4;
+
 function mockAnswers(items: Item[]): Answers {
   const traits = Array.from(new Set(items.map((it) => it.trait)));
   const levels = shuffle(traits.map((_, i) =>
@@ -45,13 +47,18 @@ function mockAnswers(items: Item[]): Answers {
   const target: Record<string, number> = {};
   traits.forEach((t, i) => (target[t] = levels[i]));
 
-  // Break the three most extreme targets — inconsistency is invisible on a
-  // trait already sitting at the midpoint. Three rather than two because two
-  // of them can turn out to be the same paradox's own pair, which would leave
-  // only one flagged panel to look at; three guarantees at least two.
-  const incoherent = new Set(
-    [...traits].sort((a, b) => Math.abs(target[b] - 5.5) - Math.abs(target[a] - 5.5)).slice(0, 3),
-  );
+  /* Answering a trait's reverse items in the same direction as its positive
+     ones opens a gap of |2·target − 11| between the two means, so only targets
+     further than half CONSISTENCY_FLAG_GAP from neutral can actually trip the
+     flag — breaking a trait that already sits mid-scale does nothing visible.
+     Four of them rather than two: two can turn out to be the same paradox's own
+     pair and leave a single flagged panel, and four flagged traits also puts
+     the overall rating at Moderate rather than High, so the summary strip shows
+     its alert colour. */
+  const breakable = traits
+    .filter((t) => Math.abs(target[t] - NEUTRAL) > CONSISTENCY_FLAG_GAP / 2)
+    .sort((a, b) => Math.abs(target[b] - NEUTRAL) - Math.abs(target[a] - NEUTRAL));
+  const incoherent = new Set(breakable.slice(0, INCOHERENT_TRAITS));
 
   const answers: Answers = {};
   items.forEach((it) => {
