@@ -46,8 +46,10 @@ Deno.serve(async (req) => {
     }
     if (!userId) throw new Error("could not resolve user id");
 
+    // full_name is only written when one was actually supplied — re-inviting an
+    // existing candidate with the name field empty must not clear their name.
     await sb.from("candidates").upsert({
-      user_id: userId, email, full_name: full_name ?? null,
+      user_id: userId, email, ...(full_name ? { full_name } : {}),
       invited_by: user.id,
     }, { onConflict: "user_id" });
 
