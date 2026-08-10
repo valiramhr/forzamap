@@ -36,11 +36,13 @@ function clamp(v: number, lo: number, hi: number) { return v < lo ? lo : v > hi 
    1.5–2.5, wide enough that its ends read as a second pair of axes. */
 function stderr(t: TraitScore) { return t.answered > 0 ? t.sd / Math.sqrt(t.answered) : 0; }
 
-/* Below this standard error the interval is narrower than the dot itself, and a
-   whisker that short claims a precision it is not making. That axis renders
-   bare instead. The two axes are judged separately: one trait can be solid
-   while the other is not, and the mark should say so. */
-const SE_FLOOR = 0.35;
+/* Below this standard error the items behind the score are not really in
+   disagreement. At n = 5, se 0.65 is an item SD of about 1.45 (0.65·√5) — items
+   sitting roughly ±2 either side of the trait mean. The old 0.35 floor was
+   nearer ±1, which is ordinary facet variation and not worth a whisker. That
+   axis renders bare instead. The two axes are judged separately: one trait can
+   be settled while the other is not, and the mark should say so. */
+const SE_FLOOR = 0.65;
 /* Half the end cap, in px at the default panel size — 6px total across. */
 const CAP = 3;
 const WHISKER_W = 1.3;

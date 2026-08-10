@@ -83,9 +83,14 @@ spread of the items themselves. Five items at ~0.7 reliability do not support
 reading 6.2 against 5.8 as a real difference, and a bare dot implies precision
 the instrument does not have.
 
-Where an axis's standard error falls below 0.35 scale units, that axis's whisker
-is omitted: below that the interval is shorter than the dot drawn on top of it,
-and rendering it claims a precision of its own. The two axes are judged
+Where an axis's standard error falls below 0.65 scale units, that axis's whisker
+is omitted. In response terms the floor is an item SD of about 1.45 at five
+items (0.65·√5) — items sitting roughly ±2 either side of the trait mean, which
+is the trait's facets genuinely pulling apart. Below it the spread is nearer ±1,
+the ordinary variation between five differently worded items on one trait, and a
+whisker drawn there says "divided" about a trait that is not. The floor was
+previously 0.35, set where the interval grew shorter than the dot drawn over it
+— a fact about the mark rather than about the responses. The two axes are judged
 independently, so a pair can carry a whisker on one trait and none on the other
 — which correctly says one trait is settled and the other is not. Where both
 fall below the floor the point renders alone.
@@ -432,7 +437,7 @@ order above.
 5.5 on both axes, identically on every panel and in every report; all four
 quadrant labels in position; the point at (gentle, dynamic) with per-axis
 uncertainty whiskers at ±1 standard error, each omitted where that axis falls
-below the 0.35 floor; trait scores shown numerically.
+below the 0.65 floor; trait scores shown numerically.
 
 **Legend.** Once above the grid, not per panel: plain dot, dot with whiskers,
 the quadrant tint, and the hollow dot, each with its sample mark. Two lines.

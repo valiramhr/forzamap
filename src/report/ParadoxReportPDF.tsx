@@ -94,7 +94,7 @@ function stderr(t: TraitScore) { return t.answered > 0 ? t.sd / Math.sqrt(t.answ
    web panel is 240px, so a web pixel is 100/240 units: the web's 6px cap is
    2.5 units across, 1.25 either side. SE_FLOOR is in scale units and so is
    shared with the web panel unchanged. */
-const SE_FLOOR = 0.35;
+const SE_FLOOR = 0.65;
 const CAP = 1.25;
 const WHISKER_W = 0.6;
 const whisker = { stroke: MUTED, strokeWidth: WHISKER_W, strokeLinecap: "round" as const };
