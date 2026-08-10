@@ -30,8 +30,9 @@ export default function App() {
       <Route path="/admin" element={<RequireAdmin><Invites /></RequireAdmin>} />
       <Route path="/admin/candidates" element={<RequireAdmin><Candidates /></RequireAdmin>} />
       <Route path="/admin/assignments/:id" element={<RequireAdmin><CandidateReport /></RequireAdmin>} />
-      {/* Unguarded layout preview for the Paradox Profile — mock data, no database. */}
-      <Route path="/preview/paradox" element={<PreviewParadox />} />
+      {/* Layout preview for the Paradox Profile — mock data, no database, but it
+          renders the full report, so it is admin-only like every other report. */}
+      <Route path="/preview/paradox" element={<RequireAdmin><PreviewParadox /></RequireAdmin>} />
       <Route path="*" element={<DefaultRoute />} />
     </Routes>
   );
