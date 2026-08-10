@@ -9,6 +9,7 @@ import ParadoxReport from "../../report/ParadoxReport";
 import { ParadoxReportPDF } from "../../report/ParadoxReportPDF";
 import { PARADOX_SLUG } from "../../lib/assignments";
 import type { Result as StrengthsResult } from "../../lib/instrument";
+import { score as scoreParadox } from "../../lib/paradox";
 import type { Result as ParadoxResult, Item as ParadoxItem, Answers as ParadoxAnswers } from "../../lib/paradox";
 import { PAPER, INK, MUTED, HAIR } from "../../lib/ui";
 
@@ -41,7 +42,23 @@ export default function CandidateReport() {
         .order("submitted_at", { ascending: false }).limit(1).maybeSingle();
       setItems(data?.items ?? null);
       setAnswers(data?.answers ?? null);
-      if (data?.result) { setResult(data.result); setState("ready"); }
+
+      /* Paradox reports are scored from the stored responses on every read
+         rather than trusting the stored result JSON. Scoring rules move — the
+         quadrant threshold is now a fixed 5.5 where it used to be the person's
+         own mean — and a result written under the old rules would otherwise be
+         drawn against panels built for the new ones. The responses are the
+         durable record; the result JSON is a cache of one scoring pass over
+         them, and items and answers are loaded here anyway for the flagged-
+         response detail. */
+      const px = inst.slug === PARADOX_SLUG;
+      const storedItems = data?.items as ParadoxItem[] | null | undefined;
+      const rescored = px && Array.isArray(storedItems) && storedItems.length
+        ? scoreParadox(storedItems, (data?.answers ?? {}) as ParadoxAnswers)
+        : null;
+
+      if (rescored) { setResult(rescored); setState("ready"); }
+      else if (data?.result) { setResult(data.result); setState("ready"); }
       else setState("none");
     })();
   }, [id]);

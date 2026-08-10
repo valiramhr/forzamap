@@ -75,23 +75,37 @@ axis, gentle trait on the horizontal. Quadrant lines at 5.5:
 | One-sided (gentle) | x ≥ 5.5, y < 5.5 | the gentle quality without its counterweight |
 | Deficient | both < 5.5 | neither quality strongly present |
 
-**Uncertainty.** Render each point with a small square around it sized from the
-within-trait standard deviation. Five items at ~0.7 reliability do not support
+**Uncertainty.** Render each point with whiskers: on each axis, a bar spanning
+±1 standard error of that trait's score, capped at both ends. The trait score is
+a mean of five items, so the quantity to express is the uncertainty in that mean
+— se = sd/√n over the items answered — not the item SD, which describes the
+spread of the items themselves. Five items at ~0.7 reliability do not support
 reading 6.2 against 5.8 as a real difference, and a bare dot implies precision
 the instrument does not have.
 
+Where an axis's standard error falls below 0.35 scale units, that axis's whisker
+is omitted: below that the interval is shorter than the dot drawn on top of it,
+and rendering it claims a precision of its own. The two axes are judged
+independently, so a pair can carry a whisker on one trait and none on the other
+— which correctly says one trait is settled and the other is not. Where both
+fall below the floor the point renders alone.
+
 **On the 5.5 threshold.** Both traits in every pair are socially desirable, so
 against a fixed midpoint most respondents will cluster in the balanced quadrant
-and the graph will under-discriminate. Two mitigations, either or both:
+and the graph will under-discriminate. The lines are nevertheless fixed at 5.5,
+on every panel and in every report: one grid, so that the twelve panels are
+comparable with each other and two people's profiles are comparable at all.
 
-1. *Person-centred lines* — draw the quadrant boundaries at that individual's
-   mean across all 24 traits, shown alongside the absolute position. This
-   removes social-desirability inflation and is consistent with the instrument
-   being intra-individual. It forces roughly half of anyone's traits below the
-   line by construction, which generates discussion but is not absolute
-   measurement and must not be described as such.
-2. *Local threshold* — once 50–100 people have completed the instrument, set the
-   boundary from your own respondent pool.
+*Person-centred lines* — quadrant boundaries at the individual's own mean across
+all 24 traits — were tried and dropped. They remove social-desirability
+inflation and suit an intra-individual instrument, but they force roughly half
+of anyone's traits below the line by construction, they give each panel its own
+grid, and they are not absolute measurement, so a reader comparing two
+candidates would be comparing two different rulers.
+
+*Local threshold* — once 50–100 people have completed the instrument, set the
+boundary from your own respondent pool — remains the intended refinement, and
+the scorer keeps the mode wired for it.
 
 Until then, read "balanced" as *not evidently one-sided* rather than as an
 achievement.
@@ -415,9 +429,13 @@ order above.
 
 **Each panel**: paradox name as heading; square 1–10 plot; y-axis label
 (dynamic) above-left, not rotated; x-axis label (gentle) beneath; crosshair at
-the resolved threshold values, which are not always 5.5; all four quadrant
-labels in position; the point at (gentle, dynamic) with an uncertainty square
-sized from the two traits' SD; trait scores shown numerically.
+5.5 on both axes, identically on every panel and in every report; all four
+quadrant labels in position; the point at (gentle, dynamic) with per-axis
+uncertainty whiskers at ±1 standard error, each omitted where that axis falls
+below the 0.35 floor; trait scores shown numerically.
+
+**Legend.** Once above the grid, not per panel: plain dot, dot with whiskers,
+the quadrant tint, and the hollow dot, each with its sample mark. Two lines.
 
 **Emphasis.** Occupied quadrant filled with a light Forza tint, its label in Ink
 at weight 500; the other three in Muted at 400 on Paper.
@@ -436,12 +454,16 @@ A4 portrait, 15mm margins, all 12 panels on one page.
 
 | Element | Allocation |
 |---|---|
-| Header | 21mm — lockup, name, instrument, date, consistency rating |
+| Header | 21mm — lockup, name, instrument, date, consistency rating, legend row |
 | Grid | 3 columns × 4 rows, each panel 60 × 60mm |
 | Panel | ~5mm title, 45 × 45mm plot, ~5mm x-axis label |
 | Footer | disclaimer, normal flow |
 
-Header is 21mm rather than 25: at 25mm the content breaks to a second page.
+Header is 21mm rather than 25: at 25mm the content breaks to a second page. The
+legend row is the last thing in that 21mm, and paying for it took the lockup
+down from 28mm to 24mm — 24 is the floor, being the print minimum in BRAND.md
+for the lockup with its tagline. The whole page then runs about 6pt short of the
+live area, so anything further added here needs measuring, not estimating.
 
 Quadrant labels at 5pt, split into two balanced lines **in code** — react-pdf
 hyphenates inside words at that size, and the global fix
