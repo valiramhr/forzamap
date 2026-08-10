@@ -1,4 +1,5 @@
-// POST { email, full_name? }  — admin only. Provisions candidate + sends link.
+// POST { email, full_name?, instrument_slug? }  — admin only.
+// Provisions candidate + assignment, sends link.
 // Deploy WITH jwt verification (default).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { admin, cors, sendMagicLink } from "../_shared.ts";
@@ -23,8 +24,15 @@ Deno.serve(async (req) => {
       .from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
     if (!isAdmin) return json({ error: "forbidden" }, 403);
 
-    const { email, full_name } = await req.json();
+    const { email, full_name, instrument_slug } = await req.json();
     if (!email) return json({ error: "email required" }, 400);
+
+    // resolve the instrument before provisioning anyone, so a bad slug can't
+    // leave a candidate behind with no assignment
+    const slug = instrument_slug ?? "strengths-profile";
+    const { data: instrument } = await sb
+      .from("instruments").select("id").eq("slug", slug).maybeSingle();
+    if (!instrument) return json({ error: `unknown instrument: ${slug}` }, 400);
 
     // create the auth user (idempotent: ignore "already registered")
     const { data: created, error: cErr } =
@@ -42,6 +50,14 @@ Deno.serve(async (req) => {
       user_id: userId, email, full_name: full_name ?? null,
       invited_by: user.id,
     }, { onConflict: "user_id" });
+
+    // one row per (candidate, instrument). Re-inviting an existing assignment
+    // re-points invited_by but leaves status/invited_at alone, so progress
+    // already made on the instrument survives.
+    const { error: aErr } = await sb.from("assignments").upsert({
+      candidate_id: userId, instrument_id: instrument.id, invited_by: user.id,
+    }, { onConflict: "candidate_id,instrument_id" });
+    if (aErr) throw aErr;
 
     await sendMagicLink(email, full_name);
     return json({ ok: true });

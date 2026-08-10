@@ -5,42 +5,61 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../auth/AuthProvider";
 import ReportView from "../report/ReportView";
 import { ReportPDF } from "../report/ReportPDF";
-import type { Result as R } from "../lib/instrument";
+import ParadoxReport from "../report/ParadoxReport";
+import { ParadoxReportPDF } from "../report/ParadoxReportPDF";
+import { PARADOX_SLUG } from "../lib/assignments";
+import type { Result as StrengthsResult } from "../lib/instrument";
+import type { Result as ParadoxResult } from "../lib/paradox";
 import { PAPER, INK, MUTED, HAIR } from "../lib/ui";
+
+/* PostgREST returns a many-to-one embed as an object; tolerate an array too. */
+const one = (x: any) => (Array.isArray(x) ? x[0] : x) ?? {};
 
 export default function Result() {
   const { session, signOut } = useAuth();
-  const [result, setResult] = useState<R | null>(null);
+  const [result, setResult] = useState<unknown>(null);
   const [name, setName] = useState<string | null>(null);
+  const [slug, setSlug] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "none">("loading");
 
   useEffect(() => {
     (async () => {
+      // the most recently submitted assessment, whichever instrument it was for
       const { data } = await supabase.from("assessments")
-        .select("result, status").eq("candidate_id", session!.user.id)
+        .select("result, status, assignment:assignments(instrument:instruments(slug))")
+        .eq("candidate_id", session!.user.id)
         .eq("status", "submitted").order("submitted_at", { ascending: false })
         .limit(1).maybeSingle();
       const { data: cand } = await supabase.from("candidates")
         .select("full_name").eq("user_id", session!.user.id).maybeSingle();
       setName(cand?.full_name ?? null);
-      if (data?.result) { setResult(data.result as R); setState("ready"); }
+      setSlug(one(one((data as any)?.assignment).instrument).slug ?? null);
+      if (data?.result) { setResult(data.result); setState("ready"); }
       else setState("none");
     })();
   }, [session]);
 
+  const isParadox = slug === PARADOX_SLUG;
+
   if (state === "loading") return <Center>Loading your profile…</Center>;
-  if (state === "none") return <Center>No completed assessment found. <a href="/assessment" style={{ color: INK }}>Start it →</a></Center>;
+  if (state === "none") return <Center>No completed assessment found. <a href="/" style={{ color: INK }}>Start it →</a></Center>;
 
   return (
     <div style={{ minHeight: "100vh", background: PAPER }}>
       <Bar>
-        <PDFDownloadLink document={<ReportPDF result={result!} name={name} />} fileName="strengths-profile.pdf"
+        <PDFDownloadLink
+          document={isParadox
+            ? <ParadoxReportPDF result={result as ParadoxResult} name={name} />
+            : <ReportPDF result={result as StrengthsResult} name={name} />}
+          fileName={isParadox ? "paradox-profile.pdf" : "strengths-profile.pdf"}
           className="font-label" style={btn}>
           {({ loading }: { loading: boolean }) => (loading ? "Preparing PDF…" : "Download PDF")}
         </PDFDownloadLink>
         <button onClick={signOut} className="font-label" style={{ ...btn, background: "none", color: MUTED, border: `1px solid ${HAIR}` }}>Sign out</button>
       </Bar>
-      <ReportView result={result!} name={name} />
+      {isParadox
+        ? <ParadoxReport result={result as ParadoxResult} name={name} />
+        : <ReportView result={result as StrengthsResult} name={name} />}
     </div>
   );
 }

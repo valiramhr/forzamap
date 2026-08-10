@@ -1,10 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import AdminNav from "./AdminNav";
 import { PAPER, INK, MUTED, HAIR, FORZA } from "../../lib/ui";
 
-interface Row { user_id: string; email: string; full_name: string | null; status: string; invited_at: string; completed_at: string | null }
+/* One row per assignment — a candidate sitting two instruments appears twice. */
+interface Row {
+  id: string;              // assignment id
+  candidate_id: string;
+  email: string;
+  full_name: string | null;
+  instrument_slug: string;
+  instrument_name: string;
+  status: string;
+  invited_at: string;
+}
+interface Instrument { slug: string; name: string }
 
 const STATUS: Record<string, { label: string; color: string }> = {
   invited: { label: "Invited", color: "#7A736B" },
@@ -13,9 +24,6 @@ const STATUS: Record<string, { label: string; color: string }> = {
 };
 /* Logical progression through the funnel, not alphabetical — drives the Status sort. */
 const STATUS_ORDER = ["invited", "in_progress", "completed"];
-
-/* Only one instrument exists, so every candidate sits the same assessment. */
-const ASSESSMENT = "Strengths Profile";
 
 type SortCol = "candidate" | "status" | "sent";
 type SortDir = "asc" | "desc";
@@ -34,29 +42,64 @@ const nameOf = (r: Row) => r.full_name ?? r.email;
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
+/* PostgREST returns a many-to-one embed as an object; tolerate an array too. */
+const one = (x: any) => (Array.isArray(x) ? x[0] : x) ?? {};
+
 export default function Candidates() {
   const nav = useNavigate();
   const [rows, setRows] = useState<Row[]>([]);
+  const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [sortCol, setSortCol] = useState<SortCol>("sent");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [assigning, setAssigning] = useState<string | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from("assignments")
+      .select("id,status,invited_at,candidate:candidates!inner(user_id,email,full_name),instrument:instruments!inner(slug,name)")
+      .order("invited_at", { ascending: false });
+    setRows(((data ?? []) as any[]).map((a) => {
+      const c = one(a.candidate), i = one(a.instrument);
+      return {
+        id: a.id, status: a.status, invited_at: a.invited_at,
+        candidate_id: c.user_id, email: c.email, full_name: c.full_name,
+        instrument_slug: i.slug, instrument_name: i.name,
+      } as Row;
+    }));
+  }, []);
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from("candidates")
-        .select("user_id,email,full_name,status,invited_at,completed_at")
-        .order("invited_at", { ascending: false });
-      setRows((data ?? []) as Row[]); setLoading(false);
+      const [, { data: inst }] = await Promise.all([
+        load(),
+        supabase.from("instruments").select("slug,name").eq("is_active", true)
+          .order("sort_order", { ascending: true }),
+      ]);
+      setInstruments((inst ?? []) as Instrument[]);
+      setLoading(false);
     })();
-  }, []);
+  }, [load]);
 
   /* Counts come from the full list so the filter labels don't shift as you filter. */
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: rows.length, invited: 0, in_progress: 0, completed: 0 };
     for (const r of rows) if (STATUS_ORDER.includes(r.status)) c[r.status]++;
     return c;
+  }, [rows]);
+
+  /* Built from every row, not the filtered ones, so the "assign another" list
+     never offers an instrument the candidate already has but the filter hides. */
+  const assignedSlugs = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const r of rows) {
+      let s = m.get(r.candidate_id);
+      if (!s) { s = new Set(); m.set(r.candidate_id, s); }
+      s.add(r.instrument_slug);
+    }
+    return m;
   }, [rows]);
 
   const visible = useMemo(() => {
@@ -73,13 +116,24 @@ export default function Candidates() {
     });
   }, [rows, query, status, sortCol, sortDir]);
 
-  const filtering = query.trim() !== "" || status !== "all";
-
   function sortBy(col: SortCol) {
     if (col === sortCol) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortCol(col); setSortDir(col === "sent" ? "desc" : "asc"); } // newest first is the natural default for dates
   }
   function clearFilters() { setQuery(""); setStatus("all"); }
+
+  /* Same edge function as the invite page. full_name is passed through because
+     admin-invite upserts the candidate row and would otherwise clear it. */
+  async function assign(r: Row, slug: string) {
+    setAssigning(r.id); setAssignError(null);
+    const { data, error } = await supabase.functions.invoke("admin-invite", {
+      body: { email: r.email, full_name: r.full_name, instrument_slug: slug },
+    });
+    const failure = error?.message ?? (data as any)?.error;
+    if (failure) setAssignError(`${r.email} — ${failure}`);
+    else await load();
+    setAssigning(null);
+  }
 
   const th = (col: SortCol, label: string) => {
     const active = sortCol === col;
@@ -129,9 +183,13 @@ export default function Candidates() {
               </select>
             </div>
 
+            {assignError && (
+              <p className="cand-count" style={{ color: FORZA, fontSize: 13 }}>Could not assign: {assignError}</p>
+            )}
+
             {visible.length !== rows.length && (
               <p className="cand-count" style={{ color: MUTED, fontSize: 13 }}>
-                Showing {visible.length} of {rows.length} candidates
+                Showing {visible.length} of {rows.length} assignments
               </p>
             )}
 
@@ -149,19 +207,22 @@ export default function Candidates() {
                     {th("status", "Status")}
                     {th("sent", "Sent")}
                     <th className="cand-th font-label">Report</th>
+                    <th className="cand-th font-label">Assign</th>
                   </tr>
                 </thead>
                 <tbody className="cand-tbody">
                   {visible.map((r) => {
                     const st = STATUS[r.status] ?? STATUS.invited;
                     const done = r.status === "completed";
+                    const remaining = instruments.filter((i) => !assignedSlugs.get(r.candidate_id)?.has(i.slug));
+                    const busy = assigning === r.id;
                     return (
-                      <tr key={r.user_id} className="cand-row">
+                      <tr key={r.id} className="cand-row">
                         <td className="cand-cell cand-c-name">
                           <div className="font-display" style={{ fontSize: "1.05rem", color: INK }}>{r.full_name || r.email}</div>
                           {r.full_name && <div className="font-mono" style={{ fontSize: 12, color: MUTED }}>{r.email}</div>}
                         </td>
-                        <td className="cand-cell" data-label="Assessment" style={{ color: INK, fontSize: 14 }}>{ASSESSMENT}</td>
+                        <td className="cand-cell" data-label="Assessment" style={{ color: INK, fontSize: 14 }}>{r.instrument_name}</td>
                         <td className="cand-cell" data-label="Status">
                           <span className="font-label cand-status" style={{ color: st.color, background: st.color + "18" }}>{st.label}</span>
                         </td>
@@ -170,8 +231,20 @@ export default function Candidates() {
                         </td>
                         <td className="cand-cell cand-c-report" data-label={done ? undefined : "Report"}>
                           {done
-                            ? <button onClick={() => nav(`/admin/candidates/${r.user_id}`)} className="font-label cand-report">Generate report</button>
+                            ? <button onClick={() => nav(`/admin/assignments/${r.id}`)} className="font-label cand-report">Generate report</button>
                             : <span style={{ color: MUTED }}>—</span>}
+                        </td>
+                        <td className="cand-cell cand-c-assign" data-label="Assign">
+                          {remaining.length === 0
+                            ? <span style={{ color: MUTED }}>—</span>
+                            : (
+                              <select className="cand-assign" value="" disabled={busy}
+                                aria-label={`Assign another assessment to ${nameOf(r)}`}
+                                onChange={(e) => { if (e.target.value) assign(r, e.target.value); }}>
+                                <option value="">{busy ? "Sending…" : "Assign another…"}</option>
+                                {remaining.map((i) => <option key={i.slug} value={i.slug}>{i.name}</option>)}
+                              </select>
+                            )}
                         </td>
                       </tr>
                     );
@@ -199,7 +272,7 @@ export default function Candidates() {
         .cand-clear{padding:8px 14px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
           background:none;color:${FORZA};border:1px solid ${FORZA};cursor:pointer}
 
-        /* Mobile: the five columns become a stacked card per candidate. */
+        /* Mobile: the columns become a stacked card per assignment. */
         .cand-table{display:block;width:100%}
         .cand-thead{display:none}
         .cand-tbody{display:grid;gap:12px}
@@ -218,6 +291,9 @@ export default function Candidates() {
           letter-spacing:.07em;padding:3px 8px;border-radius:4px}
         .cand-report{padding:8px 14px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
           background:${INK};color:${PAPER};border:none;cursor:pointer}
+        .cand-assign{max-width:190px;padding:7px 8px;border:1px solid ${HAIR};background:#fff;
+          font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-size:12px;color:${INK};cursor:pointer}
+        .cand-assign:disabled{opacity:.6;cursor:default}
         .cand-sort{display:inline-flex;align-items:center;gap:6px;padding:0;background:none;
           border:none;cursor:pointer;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
         .cand-caret{font-size:9px;line-height:1}

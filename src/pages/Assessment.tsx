@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../auth/AuthProvider";
 import { PAPER, INK, MUTED, HAIR, FORZA } from "../lib/ui";
+import { findAssignment, STRENGTHS_SLUG } from "../lib/assignments";
 import {
   buildItems, score, DOMAINS, TIME_LIMIT,
   type Item, type Answers,
@@ -19,13 +20,18 @@ export default function Assessment() {
   const [current, setCurrent] = useState(0);
   const [timeLeft, setTimeLeft] = useState(TIME_LIMIT);
   const [submitting, setSubmitting] = useState(false);
+  const [unassigned, setUnassigned] = useState(false);
   const lock = useRef(false);
 
-  // load an in-progress attempt or create a new one
+  // load an in-progress attempt or create a new one, scoped to this
+  // candidate's Strengths Profile assignment
   useEffect(() => {
     (async () => {
+      const assignmentId = await findAssignment(uid, STRENGTHS_SLUG);
+      if (!assignmentId) { setUnassigned(true); return; }
+
       const { data: existing } = await supabase
-        .from("assessments").select("*").eq("candidate_id", uid)
+        .from("assessments").select("*").eq("assignment_id", assignmentId)
         .order("started_at", { ascending: false }).limit(1).maybeSingle();
 
       if (existing?.status === "submitted") { nav("/result", { replace: true }); return; }
@@ -38,7 +44,7 @@ export default function Assessment() {
       }
       const fresh = buildItems();
       const { data, error } = await supabase.from("assessments")
-        .insert({ candidate_id: uid, items: fresh, answers: {}, status: "in_progress" })
+        .insert({ candidate_id: uid, assignment_id: assignmentId, items: fresh, answers: {}, status: "in_progress" })
         .select("id").single();
       if (error) { console.error(error); return; }
       setRowId(data.id); setItems(fresh);
@@ -106,6 +112,7 @@ export default function Assessment() {
 
   const domainEntries = useMemo(() => Object.entries(DOMAINS), []);
 
+  if (unassigned) return <Unassigned />;
   if (!items) return <Center>Preparing your assessment…</Center>;
   if (submitting) return <Center>Scoring your responses…</Center>;
 
@@ -222,4 +229,18 @@ function Card({ n, text, active }: { n: string; text: string; active: boolean })
 }
 function Center({ children }: { children: React.ReactNode }) {
   return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: PAPER, fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif", color: MUTED }}>{children}</div>;
+}
+function Unassigned() {
+  return (
+    <Center>
+      <div style={{ maxWidth: 420, padding: 24, textAlign: "center" }}>
+        <h1 style={{ fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif", fontWeight: 800, letterSpacing: "-0.035em", fontSize: "1.5rem", color: INK, margin: "0 0 10px" }}>
+          You have not been assigned this assessment.
+        </h1>
+        <p style={{ color: MUTED, lineHeight: 1.6, margin: 0 }}>
+          If you were expecting to sit the Strengths Profile, ask whoever invited you to assign it to your account.
+        </p>
+      </div>
+    </Center>
+  );
 }

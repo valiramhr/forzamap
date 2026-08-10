@@ -3,6 +3,8 @@ import { RequireAuth, RequireAdmin } from "./components/Guards";
 import { useAuth } from "./auth/AuthProvider";
 import Login from "./pages/Login";
 import Assessment from "./pages/Assessment";
+import ParadoxAssessment from "./pages/ParadoxAssessment";
+import CandidateLanding from "./pages/CandidateLanding";
 import Result from "./pages/Result";
 import Invites from "./pages/admin/Invites";
 import Candidates from "./pages/admin/Candidates";
@@ -13,7 +15,9 @@ function DefaultRoute() {
   const { session, isAdmin, loading } = useAuth();
   if (loading) return null;
   if (!session) return <Navigate to="/login" replace />;
-  return <Navigate to={isAdmin ? "/admin" : "/assessment"} replace />;
+  if (isAdmin) return <Navigate to="/admin" replace />;
+  // a candidate goes to whatever they have been assigned
+  return <CandidateLanding />;
 }
 
 export default function App() {
@@ -21,10 +25,11 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/assessment" element={<RequireAuth><Assessment /></RequireAuth>} />
+      <Route path="/paradox" element={<RequireAuth><ParadoxAssessment /></RequireAuth>} />
       <Route path="/result" element={<RequireAuth><Result /></RequireAuth>} />
       <Route path="/admin" element={<RequireAdmin><Invites /></RequireAdmin>} />
       <Route path="/admin/candidates" element={<RequireAdmin><Candidates /></RequireAdmin>} />
-      <Route path="/admin/candidates/:id" element={<RequireAdmin><CandidateReport /></RequireAdmin>} />
+      <Route path="/admin/assignments/:id" element={<RequireAdmin><CandidateReport /></RequireAdmin>} />
       {/* Unguarded layout preview for the Paradox Profile — mock data, no database. */}
       <Route path="/preview/paradox" element={<PreviewParadox />} />
       <Route path="*" element={<DefaultRoute />} />
