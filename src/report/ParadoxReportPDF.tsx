@@ -30,8 +30,15 @@ const TINT = "#ECE0D8";
 const s = StyleSheet.create({
   page: { paddingVertical: 15 * MM, paddingHorizontal: 15 * MM, backgroundColor: PAPER, color: INK, fontFamily: BASE },
 
-  header: { height: HEADER, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  lockup: { width: 28 * MM, height: 12.6 * MM, marginBottom: 3 },
+  /* Column, so the legend can sit at the foot of the header block, directly
+     above the grid it explains. space-between pins it there. */
+  header: { height: HEADER, flexDirection: "column", justifyContent: "space-between" },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  /* 24mm rather than 28: the legend row has to come out of the same 21mm
+     header, and the header is what the one-page fit has least slack in. 24 is
+     the floor — BRAND.md sets the print minimum for the lockup with its
+     tagline at 24mm, and below that the tagline has to be dropped. */
+  lockup: { width: 24 * MM, height: 10.8 * MM, marginBottom: 3 },
   h1: { ...display, fontSize: 14, letterSpacing: -0.49 },
   metaCol: { alignItems: "flex-end" },
   nameTxt: { ...display, fontSize: 10, letterSpacing: -0.35, marginBottom: 3 },
@@ -48,6 +55,11 @@ const s = StyleSheet.create({
   plot: { width: PLOT, height: PLOT, position: "relative", backgroundColor: PAPER },
   quad: { position: "absolute", padding: 3 },
   quadTxt: { fontSize: 5, lineHeight: 1.2, maxWidth: "100%" },
+
+  legend: { flexDirection: "row", alignItems: "center" },
+  legendItem: { flexDirection: "row", alignItems: "center", marginRight: 10 },
+  legendMark: { marginRight: 3 },
+  legendTxt: { fontSize: 5, color: MUTED },
 
   /* In normal flow, not absolutely positioned: an absolute child whose box
      falls below the page's content area is what pushes react-pdf onto a
@@ -75,8 +87,17 @@ function labelLines(text: string): string[] {
 function pct(v: number) { return ((clamp(v, SCALE_MIN, SCALE_MAX) - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100; }
 
 /* Standard error of the trait score — see the note on the web panel. The score
-   is a mean of five items, so the band belongs at sd/√n, not at the item SD. */
+   is a mean of five items, so the whisker belongs at sd/√n, not at the item SD. */
 function stderr(t: TraitScore) { return t.answered > 0 ? t.sd / Math.sqrt(t.answered) : 0; }
+
+/* Whisker geometry, in viewBox units. The plot is 100 units across where the
+   web panel is 240px, so a web pixel is 100/240 units: the web's 6px cap is
+   2.5 units across, 1.25 either side. SE_FLOOR is in scale units and so is
+   shared with the web panel unchanged. */
+const SE_FLOOR = 0.35;
+const CAP = 1.25;
+const WHISKER_W = 0.6;
+const whisker = { stroke: MUTED, strokeWidth: WHISKER_W, strokeLinecap: "round" as const };
 
 const CORNERS: Record<Quadrant, { justifyContent: "flex-start" | "flex-end"; alignItems: "flex-start" | "flex-end"; textAlign: "left" | "right" }> = {
   oneSidedDynamic: { justifyContent: "flex-start", alignItems: "flex-start", textAlign: "left" },
@@ -93,11 +114,16 @@ function Panel({ p }: { p: ParadoxResult }) {
   const cx = pct(p.thresholdX);
   const cyTop = 100 - pct(p.thresholdY);
 
-  // Uncertainty band: ±1 standard error on each trait, cut off at the plot edge.
+  const ptX = pct(gentle.score), ptY = 100 - pct(dynamic.score);
+
+  /* Whiskers: ±1 standard error on each trait, cut off at the plot edge (pct
+     clamps to the scale). An axis under SE_FLOOR is left bare. */
   const gse = stderr(gentle), dse = stderr(dynamic);
+  const showX = gse >= SE_FLOOR, showY = dse >= SE_FLOOR;
   const x0 = pct(gentle.score - gse), x1 = pct(gentle.score + gse);
   const yTop = 100 - pct(dynamic.score + dse), yBot = 100 - pct(dynamic.score - dse);
-  const ptX = pct(gentle.score), ptY = 100 - pct(dynamic.score);
+  /* Caps run across the whisker, so they need their own clamp to the square. */
+  const capAt = (v: number) => clamp(v, 0, 100);
 
   const boxes: { key: Quadrant; left: number; top: number; w: number; h: number }[] = [
     { key: "oneSidedDynamic", left: 0, top: 0, w: cx, h: cyTop },
@@ -137,10 +163,24 @@ function Panel({ p }: { p: ParadoxResult }) {
             <Rect x={0} y={0} width={100} height={100} fill="none" stroke={HAIR} strokeWidth={0.5} />
             <Line x1={cx} y1={0} x2={cx} y2={100} stroke={HAIR} strokeWidth={0.5} />
             <Line x1={0} y1={cyTop} x2={100} y2={cyTop} stroke={HAIR} strokeWidth={0.5} />
-            {/* Filled and unstroked: an outlined box reads as a bounded shape,
-                which is the wrong claim for an interval. */}
-            <Rect x={x0} y={yTop} width={Math.max(x1 - x0, 0)} height={Math.max(yBot - yTop, 0)}
-              fill={HAIR} fillOpacity={0.25} />
+            {/* Uncertainty as whiskers, one axis at a time, under the point. */}
+            {showX ? (
+              <>
+                <Line x1={x0} y1={ptY} x2={x1} y2={ptY} {...whisker} />
+                <Line x1={x0} y1={capAt(ptY - CAP)} x2={x0} y2={capAt(ptY + CAP)} {...whisker} />
+                <Line x1={x1} y1={capAt(ptY - CAP)} x2={x1} y2={capAt(ptY + CAP)} {...whisker} />
+              </>
+            ) : null}
+            {showY ? (
+              <>
+                <Line x1={ptX} y1={yTop} x2={ptX} y2={yBot} {...whisker} />
+                <Line x1={capAt(ptX - CAP)} y1={yTop} x2={capAt(ptX + CAP)} y2={yTop} {...whisker} />
+                <Line x1={capAt(ptX - CAP)} y1={yBot} x2={capAt(ptX + CAP)} y2={yBot} {...whisker} />
+              </>
+            ) : null}
+            {/* PAPER halo: keeps the whiskers off the dot's edge, and keeps a
+                hollow dot reading as hollow where a whisker runs beneath it. */}
+            <Circle cx={ptX} cy={ptY} r={3.5} fill={PAPER} />
             <Circle cx={ptX} cy={ptY} r={2.6} fill={flagged ? "none" : INK} stroke={INK} strokeWidth={1} />
           </Svg>
         </View>
@@ -155,6 +195,59 @@ function Panel({ p }: { p: ParadoxResult }) {
   );
 }
 
+/* Key to the marks, in the header block. Same geometry as a panel's, drawn at
+   legend scale in points rather than in the plot's 0–100 viewBox. */
+function Legend() {
+  return (
+    <View style={s.legend}>
+      <LegendItem text="Plain dot — responses consistent">
+        <Svg width={7} height={7} style={s.legendMark}>
+          <Circle cx={3.5} cy={3.5} r={2} fill={INK} stroke={INK} strokeWidth={0.8} />
+        </Svg>
+      </LegendItem>
+
+      <LegendItem text="Whiskers — plausible range; longer, less certain">
+        <Svg width={16} height={9} style={s.legendMark}>
+          <Line x1={1.5} y1={4.5} x2={14.5} y2={4.5} {...legendWhisker} />
+          <Line x1={1.5} y1={3} x2={1.5} y2={6} {...legendWhisker} />
+          <Line x1={14.5} y1={3} x2={14.5} y2={6} {...legendWhisker} />
+          <Line x1={8} y1={1} x2={8} y2={8} {...legendWhisker} />
+          <Line x1={6.5} y1={1} x2={9.5} y2={1} {...legendWhisker} />
+          <Line x1={6.5} y1={8} x2={9.5} y2={8} {...legendWhisker} />
+          <Circle cx={8} cy={4.5} r={2.8} fill={PAPER} />
+          <Circle cx={8} cy={4.5} r={2} fill={INK} stroke={INK} strokeWidth={0.8} />
+        </Svg>
+      </LegendItem>
+
+      <LegendItem text="Tint — this person's quadrant">
+        <Svg width={7} height={7} style={s.legendMark}>
+          <Rect x={3.5} y={0.25} width={3.25} height={3.25} fill={TINT} />
+          <Rect x={0.25} y={0.25} width={6.5} height={6.5} fill="none" stroke={HAIR} strokeWidth={0.5} />
+          <Line x1={3.5} y1={0.25} x2={3.5} y2={6.75} stroke={HAIR} strokeWidth={0.5} />
+          <Line x1={0.25} y1={3.5} x2={6.75} y2={3.5} stroke={HAIR} strokeWidth={0.5} />
+        </Svg>
+      </LegendItem>
+
+      <LegendItem text="Hollow — inconsistent pair, read with care">
+        <Svg width={7} height={7} style={s.legendMark}>
+          <Circle cx={3.5} cy={3.5} r={2} fill={PAPER} stroke={INK} strokeWidth={0.8} />
+        </Svg>
+      </LegendItem>
+    </View>
+  );
+}
+
+const legendWhisker = { stroke: MUTED, strokeWidth: 0.5, strokeLinecap: "round" as const };
+
+function LegendItem({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <View style={s.legendItem}>
+      {children}
+      <Text style={s.legendTxt}>{text}</Text>
+    </View>
+  );
+}
+
 export function ParadoxReportPDF({ result, name }: { result: Result; name?: string | null }) {
   const byKey = new Map(result.paradoxes.map((p) => [p.key, p]));
   const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -165,18 +258,21 @@ export function ParadoxReportPDF({ result, name }: { result: Result; name?: stri
     <Document>
       <Page size="A4" orientation="portrait" style={s.page}>
         <View style={s.header}>
-          <View>
-            <Image src="/brand/forzamap-lockup-2x.png" style={s.lockup} />
-            <Text style={s.h1}>Paradox Profile</Text>
+          <View style={s.headerTop}>
+            <View>
+              <Image src="/brand/forzamap-lockup-2x.png" style={s.lockup} />
+              <Text style={s.h1}>Paradox Profile</Text>
+            </View>
+            <View style={s.metaCol}>
+              {name ? <Text style={s.nameTxt}>{name}</Text> : null}
+              <Text style={s.meta}>{date}</Text>
+              <Text style={[s.meta, result.consistency === "Low" ? { color: FORZA } : {}]}>
+                Consistency {result.consistency}
+                {flaggedPairs > 0 ? ` · ${flaggedPairs} flagged ${flaggedPairs === 1 ? "pair" : "pairs"}` : ""}
+              </Text>
+            </View>
           </View>
-          <View style={s.metaCol}>
-            {name ? <Text style={s.nameTxt}>{name}</Text> : null}
-            <Text style={s.meta}>{date}</Text>
-            <Text style={[s.meta, result.consistency === "Low" ? { color: FORZA } : {}]}>
-              Consistency {result.consistency}
-              {flaggedPairs > 0 ? ` · ${flaggedPairs} flagged ${flaggedPairs === 1 ? "pair" : "pairs"}` : ""}
-            </Text>
-          </View>
+          <Legend />
         </View>
 
         <View style={s.grid}>

@@ -7,9 +7,10 @@ import {
 
 /* One paradox as a square quadrant plot.
    y = the dynamic pole, x = the gentle pole, both running 1–10.
-   The crosshair sits at the result's own thresholds, which move with the
-   scoring mode — under personCentred they are the candidate's overall mean,
-   not the scale midpoint. */
+   The crosshair sits at the result's own thresholds. Scoring now defaults to
+   the fixed mode, so those are 5.5 on both axes of every panel and every
+   report — one grid, directly comparable. The values are still read from the
+   result rather than hardcoded, so the local mode stays wired for later. */
 
 const DISPLAY = "Archivo, ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -30,10 +31,19 @@ const CORNERS: Record<Quadrant, { align: "flex-start" | "flex-end"; justify: "fl
 function clamp(v: number, lo: number, hi: number) { return v < lo ? lo : v > hi ? hi : v; }
 
 /* Standard error of the trait score. The score is a mean of five items, so what
-   the band should express is the uncertainty in that mean — sd/√n — not the SD,
-   which describes the spread of the items themselves. At n = 5 the SD runs
-   1.5–2.5, wide enough that its edges read as a second pair of axes. */
+   the whisker should express is the uncertainty in that mean — sd/√n — not the
+   SD, which describes the spread of the items themselves. At n = 5 the SD runs
+   1.5–2.5, wide enough that its ends read as a second pair of axes. */
 function stderr(t: TraitScore) { return t.answered > 0 ? t.sd / Math.sqrt(t.answered) : 0; }
+
+/* Below this standard error the interval is narrower than the dot itself, and a
+   whisker that short claims a precision it is not making. That axis renders
+   bare instead. The two axes are judged separately: one trait can be solid
+   while the other is not, and the mark should say so. */
+const SE_FLOOR = 0.35;
+/* Half the end cap, in px at the default panel size — 6px total across. */
+const CAP = 3;
+const WHISKER_W = 1.3;
 
 export default function ParadoxPanel({ result, size = 240, items, answers }: {
   result: ParadoxResult; size?: number; items?: Item[]; answers?: Answers;
@@ -52,12 +62,17 @@ export default function ParadoxPanel({ result, size = 240, items, answers }: {
   const cx = px(result.thresholdX);
   const cy = py(result.thresholdY);
 
-  // Uncertainty band: ±1 standard error on each trait, cut off at the plot edge.
+  const ptX = px(gentle.score), ptY = py(dynamic.score);
+
+  /* Whiskers: ±1 standard error on each trait, cut off at the plot edge (px and
+     py clamp to the scale). An axis under SE_FLOOR is left bare. */
   const gse = stderr(gentle), dse = stderr(dynamic);
+  const showX = gse >= SE_FLOOR, showY = dse >= SE_FLOOR;
   const x0 = px(gentle.score - gse), x1 = px(gentle.score + gse);
   const y0 = py(dynamic.score - dse), y1 = py(dynamic.score + dse);
-
-  const ptX = px(gentle.score), ptY = py(dynamic.score);
+  /* Caps sit across the whisker, so they run along the *other* axis and need
+     their own clamp to stay inside the square. */
+  const capAt = (v: number) => clamp(v, 0, size);
 
   const quads: { key: Quadrant; left: number; top: number; w: number; h: number }[] = [
     { key: "oneSidedDynamic", left: 0, top: 0, w: cx, h: cy },
@@ -108,11 +123,25 @@ export default function ParadoxPanel({ result, size = 240, items, answers }: {
             {/* crosshair at the result's own thresholds */}
             <line x1={cx} y1={0} x2={cx} y2={size} stroke={HAIR} strokeWidth={1} />
             <line x1={0} y1={cy} x2={size} y2={cy} stroke={HAIR} strokeWidth={1} />
-            {/* Uncertainty halo from the two traits' standard errors. Filled and
-                unstroked on purpose: an outlined box reads as a bounded shape,
-                which is the wrong claim for an interval. */}
-            <rect x={x0} y={y1} width={Math.max(x1 - x0, 0)} height={Math.max(y0 - y1, 0)}
-              fill={HAIR} fillOpacity={0.25} stroke="none" />
+            {/* Uncertainty as whiskers, one axis at a time, drawn under the
+                point so the dot stays crisp on top. */}
+            {showX && (
+              <g stroke={MUTED} strokeWidth={WHISKER_W} strokeLinecap="round">
+                <line x1={x0} y1={ptY} x2={x1} y2={ptY} />
+                <line x1={x0} y1={capAt(ptY - CAP)} x2={x0} y2={capAt(ptY + CAP)} />
+                <line x1={x1} y1={capAt(ptY - CAP)} x2={x1} y2={capAt(ptY + CAP)} />
+              </g>
+            )}
+            {showY && (
+              <g stroke={MUTED} strokeWidth={WHISKER_W} strokeLinecap="round">
+                <line x1={ptX} y1={y0} x2={ptX} y2={y1} />
+                <line x1={capAt(ptX - CAP)} y1={y0} x2={capAt(ptX + CAP)} y2={y0} />
+                <line x1={capAt(ptX - CAP)} y1={y1} x2={capAt(ptX + CAP)} y2={y1} />
+              </g>
+            )}
+            {/* PAPER halo: keeps the whiskers off the dot's edge, and keeps a
+                hollow dot reading as hollow where a whisker runs beneath it. */}
+            <circle cx={ptX} cy={ptY} r={6} fill={PAPER} stroke="none" />
             <circle cx={ptX} cy={ptY} r={4.5} fill={flagged ? "none" : INK} stroke={INK} strokeWidth={1.5} />
           </svg>
         </div>

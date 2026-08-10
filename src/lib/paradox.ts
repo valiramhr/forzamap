@@ -345,7 +345,9 @@ export function buildItems(): Item[] {
 export type ThresholdMode = "fixed" | "personCentred" | "local";
 
 export interface ScoreOptions {
-  /** How the quadrant boundary is chosen. Default "personCentred". */
+  /** How the quadrant boundary is chosen. Default "fixed" — every panel and
+      every report share one grid at the scale midpoint, so positions are
+      comparable across panels and across candidates. */
   threshold?: ThresholdMode;
   /** Per-trait boundaries, required when threshold === "local". */
   localThresholds?: Partial<Record<TraitKey, number>>;
@@ -403,7 +405,7 @@ export function itemScore(response: number, reverse: boolean) {
 }
 
 export function score(items: Item[], answers: Answers, opts: ScoreOptions = {}): Result {
-  const mode: ThresholdMode = opts.threshold ?? "personCentred";
+  const mode: ThresholdMode = opts.threshold ?? "fixed";
 
   const byTrait = {} as Record<TraitKey, { pos: number[]; rev: number[] }>;
   (Object.keys(BANK) as TraitKey[]).forEach((t) => (byTrait[t] = { pos: [], rev: [] }));

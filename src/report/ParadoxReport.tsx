@@ -1,6 +1,6 @@
 import ParadoxPanel from "./ParadoxPanel";
 import { PARADOX_ORDER, type Result, type Item, type Answers } from "../lib/paradox";
-import { INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, FORZA } from "../lib/ui";
 
 /* items and answers are optional: with them, a flagged panel can open the raw
    responses behind its two traits. Without them the panels render exactly as
@@ -8,7 +8,7 @@ import { INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
 export default function ParadoxReport({ result, name, items, answers }: {
   result: Result; name?: string | null; items?: Item[]; answers?: Answers;
 }) {
-  const { zoneCounts, consistency, flaggedCount, thresholdMode, overallMean } = result;
+  const { zoneCounts, consistency, flaggedCount } = result;
   const byKey = new Map(result.paradoxes.map((p) => [p.key, p]));
   /* result.flaggedCount counts flagged *traits*; a pair is flagged when either
      of its two traits is, so the panel count is its own tally. */
@@ -33,13 +33,7 @@ export default function ParadoxReport({ result, name, items, answers }: {
         <Stat label="Zones" value={`${zoneCounts.balanced} balanced · ${oneSided} one-sided · ${zoneCounts.deficient} deficient`} tone={INK} />
       </div>
 
-      {thresholdMode === "personCentred" && (
-        <p style={{ color: BODY, lineHeight: 1.6, fontSize: 14, margin: "0 0 32px", maxWidth: 720 }}>
-          Quadrant boundaries sit at this person's own mean across all 24 traits (
-          <span className="font-mono">{overallMean.toFixed(1)}</span>), so each position is
-          relative to the rest of their own profile rather than to other people.
-        </p>
-      )}
+      <Legend />
 
       <div className="pxgrid">
         {PARADOX_ORDER.map((key) => {
@@ -58,6 +52,90 @@ export default function ParadoxReport({ result, name, items, answers }: {
         @media (min-width:1024px){.pxgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
       `}</style>
     </div>
+  );
+}
+
+/* Key to the marks, once above the grid rather than per panel — twelve copies
+   of it would drown the twelve plots it explains. Two lines: the two things the
+   point itself can say, then the tint and the flagged form. Mark geometry is
+   the panel's, at legend scale. */
+const TINT = FORZA + "1A";
+const W = { stroke: MUTED, strokeWidth: 1.3, strokeLinecap: "round" as const };
+
+function Legend() {
+  return (
+    <div style={{ margin: "0 0 28px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={legendRow}>
+        <Key mark={<DotMark />} lead="Plain dot"
+          text="responses on this trait were consistent." />
+        <Key mark={<WhiskerMark />} lead="Whiskers"
+          text="where the score could plausibly sit, given how much the five items varied. Longer means less certain." />
+      </div>
+      <div style={legendRow}>
+        <Key mark={<QuadMark />} lead="Tinted quadrant" text="where this person falls." />
+        <Key mark={<HollowMark />} lead="Hollow dot"
+          text="responses on the pair were inconsistent — interpret with care." />
+      </div>
+    </div>
+  );
+}
+
+const legendRow: React.CSSProperties = {
+  display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px 28px",
+};
+
+function Key({ mark, lead, text }: { mark: React.ReactNode; lead: string; text: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 11, lineHeight: 1.4, color: MUTED }}>
+      {mark}
+      <span><span style={{ fontWeight: 500, color: INK }}>{lead}</span> — {text}</span>
+    </span>
+  );
+}
+
+function DotMark() {
+  return (
+    <svg width={14} height={14} style={{ display: "block", flexShrink: 0 }} aria-hidden="true">
+      <circle cx={7} cy={7} r={3.5} fill={INK} stroke={INK} strokeWidth={1.5} />
+    </svg>
+  );
+}
+
+function HollowMark() {
+  return (
+    <svg width={14} height={14} style={{ display: "block", flexShrink: 0 }} aria-hidden="true">
+      <circle cx={7} cy={7} r={3.5} fill={PAPER} stroke={INK} strokeWidth={1.5} />
+    </svg>
+  );
+}
+
+/* Both axes, as they appear on a panel: whiskers under a haloed point. */
+function WhiskerMark() {
+  return (
+    <svg width={30} height={18} style={{ display: "block", flexShrink: 0 }} aria-hidden="true">
+      <g {...W}>
+        <line x1={3} y1={9} x2={27} y2={9} />
+        <line x1={3} y1={6} x2={3} y2={12} />
+        <line x1={27} y1={6} x2={27} y2={12} />
+        <line x1={15} y1={2} x2={15} y2={16} />
+        <line x1={12} y1={2} x2={18} y2={2} />
+        <line x1={12} y1={16} x2={18} y2={16} />
+      </g>
+      <circle cx={15} cy={9} r={5} fill={PAPER} />
+      <circle cx={15} cy={9} r={3.5} fill={INK} stroke={INK} strokeWidth={1.5} />
+    </svg>
+  );
+}
+
+/* A panel in miniature: crosshair, one quadrant tinted. */
+function QuadMark() {
+  return (
+    <svg width={14} height={14} style={{ display: "block", flexShrink: 0 }} aria-hidden="true">
+      <rect x={7} y={0.5} width={6.5} height={6.5} fill={TINT} />
+      <rect x={0.5} y={0.5} width={13} height={13} fill="none" stroke={HAIR} strokeWidth={1} />
+      <line x1={7} y1={0.5} x2={7} y2={13.5} stroke={HAIR} strokeWidth={1} />
+      <line x1={0.5} y1={7} x2={13.5} y2={7} stroke={HAIR} strokeWidth={1} />
+    </svg>
   );
 }
 

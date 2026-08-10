@@ -104,7 +104,9 @@ export default function ParadoxAssessment() {
   async function submit(finalAnswers: Answers) {
     if (!items || !rowId) return;
     setSubmitting(true);
-    const result = score(items, finalAnswers, { threshold: "personCentred" });
+    /* Fixed thresholds, so every stored result carries the same 5.5 crosshair
+       and one candidate's panels can be read against another's. */
+    const result = score(items, finalAnswers, { threshold: "fixed" });
     await supabase.from("assessments")
       .update({ answers: finalAnswers, result, status: "submitted" })
       .eq("id", rowId);
