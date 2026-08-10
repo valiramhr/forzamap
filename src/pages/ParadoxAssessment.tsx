@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../auth/AuthProvider";
-import { PAPER, INK, MUTED, HAIR, BODY } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
 import { findAssignment, PARADOX_SLUG } from "../lib/assignments";
 import {
   buildItems, score, SCALE_MIN, SCALE_MAX,
@@ -25,22 +25,27 @@ export default function ParadoxAssessment() {
   const uid = session!.user.id;
 
   const [phase, setPhase] = useState<Phase>("loading");
+  const [assignmentId, setAssignmentId] = useState<string | null>(null);
   const [rowId, setRowId] = useState<string | null>(null);
   const [items, setItems] = useState<Item[] | null>(null);
   const [answers, setAnswers] = useState<Answers>({});
   const [current, setCurrent] = useState(0);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const lock = useRef(false);
 
-  // load an in-progress attempt or create a new one, scoped to this
-  // candidate's Paradox Profile assignment
+  // resume an in-progress attempt, scoped to this candidate's Paradox Profile
+  // assignment. Nothing is written on mount: the row is created by begin(), so
+  // reading the intro and leaving does not mark the assignment in_progress.
   useEffect(() => {
     (async () => {
-      const assignmentId = await findAssignment(uid, PARADOX_SLUG);
-      if (!assignmentId) { setPhase("unassigned"); return; }
+      const aid = await findAssignment(uid, PARADOX_SLUG);
+      if (!aid) { setPhase("unassigned"); return; }
+      setAssignmentId(aid);
 
       const { data: existing } = await supabase
-        .from("assessments").select("*").eq("assignment_id", assignmentId)
+        .from("assessments").select("*").eq("assignment_id", aid)
         .order("started_at", { ascending: false }).limit(1).maybeSingle();
 
       if (existing?.status === "submitted") { nav("/result", { replace: true }); return; }
@@ -54,15 +59,26 @@ export default function ParadoxAssessment() {
         setPhase("running"); // already under way — the intro has been read
         return;
       }
-      const fresh = buildItems();
-      const { data, error } = await supabase.from("assessments")
-        .insert({ candidate_id: uid, assignment_id: assignmentId, items: fresh, answers: {}, status: "in_progress" })
-        .select("id").single();
-      if (error) { console.error(error); return; }
-      setRowId(data.id); setItems(fresh); setPhase("intro");
+      // no attempt yet: build the items so the intro can quote a length, but
+      // leave them unsaved until the candidate commits
+      setItems(buildItems());
+      setPhase("intro");
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* Creates the attempt. This insert is what trips the start trigger, so it is
+     deliberately the first thing that happens after "Begin". */
+  async function begin() {
+    if (!items || !assignmentId || starting) return;
+    setStarting(true); setStartError(false);
+    const { data, error } = await supabase.from("assessments")
+      .insert({ candidate_id: uid, assignment_id: assignmentId, items, answers: {}, status: "in_progress" })
+      .select("id").single();
+    setStarting(false);
+    if (error || !data) { console.error(error); setStartError(true); return; }
+    setRowId(data.id); setPhase("running");
+  }
 
   const total = items?.length ?? 0;
 
@@ -112,7 +128,7 @@ export default function ParadoxAssessment() {
   if (phase === "unassigned") return <Shell><Unassigned /></Shell>;
   if (phase === "loading" || !items) return <Shell><Center>Preparing your assessment…</Center></Shell>;
   if (submitting) return <Shell><Center>Scoring your responses…</Center></Shell>;
-  if (phase === "intro") return <Shell><Intro total={total} onBegin={() => setPhase("running")} /></Shell>;
+  if (phase === "intro") return <Shell><Intro total={total} busy={starting} failed={startError} onBegin={begin} /></Shell>;
 
   const it = items[current];
   const chosen = answers[it.id];
@@ -159,7 +175,7 @@ export default function ParadoxAssessment() {
   );
 }
 
-function Intro({ total, onBegin }: { total: number; onBegin: () => void }) {
+function Intro({ total, busy, failed, onBegin }: { total: number; busy: boolean; failed: boolean; onBegin: () => void }) {
   return (
     <div className="pxwrap pxintro">
       <p className="font-label" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, margin: "0 0 10px" }}>
@@ -172,7 +188,12 @@ function Intro({ total, onBegin }: { total: number; onBegin: () => void }) {
         <li>It takes about 10–14 minutes. There is no timer.</li>
         <li>There are no right answers — your first instinct is the best one.</li>
       </ul>
-      <button onClick={onBegin} className="font-label pxbegin">Begin</button>
+      <button onClick={onBegin} disabled={busy} className="font-label pxbegin">
+        {busy ? "Starting…" : "Begin"}
+      </button>
+      {failed && (
+        <p className="pxfail">Could not start the assessment. Check your connection and try again.</p>
+      )}
     </div>
   );
 }
@@ -232,6 +253,8 @@ function Shell({ children }: { children: React.ReactNode }) {
         .pxlist li{padding:10px 0;border-bottom:1px solid ${HAIR}}
         .pxbegin{width:100%;padding:14px;background:${INK};color:${PAPER};font-size:13px;
           letter-spacing:.07em;text-transform:uppercase;border:none;cursor:pointer}
+        .pxbegin:disabled{opacity:.6;cursor:default}
+        .pxfail{color:${FORZA};font-size:13px;line-height:1.6;margin:14px 0 0}
 
         @media (min-width:768px){
           .pxwrap{padding:32px 24px}
