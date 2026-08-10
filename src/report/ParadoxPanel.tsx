@@ -1,5 +1,9 @@
-import { PAPER, INK, MUTED, HAIR, FORZA } from "../lib/ui";
-import { PARADOXES, SCALE_MIN, SCALE_MAX, type ParadoxResult, type Quadrant } from "../lib/paradox";
+import { useState } from "react";
+import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
+import {
+  PARADOXES, SCALE_MIN, SCALE_MAX, itemScore,
+  type ParadoxResult, type Quadrant, type TraitScore, type Item, type Answers,
+} from "../lib/paradox";
 
 /* One paradox as a square quadrant plot.
    y = the dynamic pole, x = the gentle pole, both running 1–10.
@@ -12,6 +16,9 @@ const MONO = "'JetBrains Mono', ui-monospace, monospace";
 /* FORZA at ~10% — enough to read as "you are here" without fighting the label. */
 const TINT = FORZA + "1A";
 const GUTTER = 22; // room for the y-axis tick numbers
+/* A converted item this far from its trait's mean is answered against the rest
+   of the trait, so it gets called out in the response detail. */
+const DRIFT = 2;
 
 const CORNERS: Record<Quadrant, { align: "flex-start" | "flex-end"; justify: "flex-start" | "flex-end"; text: "left" | "right" }> = {
   oneSidedDynamic: { align: "flex-start", justify: "flex-start", text: "left" },
@@ -22,9 +29,21 @@ const CORNERS: Record<Quadrant, { align: "flex-start" | "flex-end"; justify: "fl
 
 function clamp(v: number, lo: number, hi: number) { return v < lo ? lo : v > hi ? hi : v; }
 
-export default function ParadoxPanel({ result, size = 240 }: { result: ParadoxResult; size?: number }) {
+/* Standard error of the trait score. The score is a mean of five items, so what
+   the band should express is the uncertainty in that mean — sd/√n — not the SD,
+   which describes the spread of the items themselves. At n = 5 the SD runs
+   1.5–2.5, wide enough that its edges read as a second pair of axes. */
+function stderr(t: TraitScore) { return t.answered > 0 ? t.sd / Math.sqrt(t.answered) : 0; }
+
+export default function ParadoxPanel({ result, size = 240, items, answers }: {
+  result: ParadoxResult; size?: number; items?: Item[]; answers?: Answers;
+}) {
   const { dynamic, gentle, quadrant, flagged } = result;
   const labels = PARADOXES[result.key].labels;
+  const [open, setOpen] = useState(false);
+  /* The raw responses are optional — without them there is nothing to inspect,
+     so the caption stays a caption. */
+  const canInspect = Boolean(items && answers);
 
   const span = SCALE_MAX - SCALE_MIN;
   const px = (v: number) => ((clamp(v, SCALE_MIN, SCALE_MAX) - SCALE_MIN) / span) * size;
@@ -33,9 +52,10 @@ export default function ParadoxPanel({ result, size = 240 }: { result: ParadoxRe
   const cx = px(result.thresholdX);
   const cy = py(result.thresholdY);
 
-  // Uncertainty band: half-width equals each trait's own SD, cut off at the plot edge.
-  const x0 = px(gentle.score - gentle.sd), x1 = px(gentle.score + gentle.sd);
-  const y0 = py(dynamic.score - dynamic.sd), y1 = py(dynamic.score + dynamic.sd);
+  // Uncertainty band: ±1 standard error on each trait, cut off at the plot edge.
+  const gse = stderr(gentle), dse = stderr(dynamic);
+  const x0 = px(gentle.score - gse), x1 = px(gentle.score + gse);
+  const y0 = py(dynamic.score - dse), y1 = py(dynamic.score + dse);
 
   const ptX = px(gentle.score), ptY = py(dynamic.score);
 
@@ -88,8 +108,11 @@ export default function ParadoxPanel({ result, size = 240 }: { result: ParadoxRe
             {/* crosshair at the result's own thresholds */}
             <line x1={cx} y1={0} x2={cx} y2={size} stroke={HAIR} strokeWidth={1} />
             <line x1={0} y1={cy} x2={size} y2={cy} stroke={HAIR} strokeWidth={1} />
-            {/* uncertainty square from the two traits' SDs */}
-            <rect x={x0} y={y1} width={Math.max(x1 - x0, 0)} height={Math.max(y0 - y1, 0)} fill="none" stroke={HAIR} strokeWidth={1} />
+            {/* Uncertainty halo from the two traits' standard errors. Filled and
+                unstroked on purpose: an outlined box reads as a bounded shape,
+                which is the wrong claim for an interval. */}
+            <rect x={x0} y={y1} width={Math.max(x1 - x0, 0)} height={Math.max(y0 - y1, 0)}
+              fill={HAIR} fillOpacity={0.25} stroke="none" />
             <circle cx={ptX} cy={ptY} r={4.5} fill={flagged ? "none" : INK} stroke={INK} strokeWidth={1.5} />
           </svg>
         </div>
@@ -106,11 +129,102 @@ export default function ParadoxPanel({ result, size = 240 }: { result: ParadoxRe
         {dynamic.name} {dynamic.score.toFixed(1)} · {gentle.name} {gentle.score.toFixed(1)}
       </div>
 
-      {flagged && (
+      {flagged && !canInspect && (
         <p style={{ margin: "6px 0 0", marginLeft: GUTTER, width: size, fontSize: 11, lineHeight: 1.4, color: FORZA }}>
           Responses on this pair were inconsistent — interpret with care.
         </p>
       )}
+
+      {flagged && canInspect && (
+        <>
+          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+            style={{
+              display: "block", margin: "6px 0 0", marginLeft: GUTTER, width: size,
+              padding: 0, background: "none", border: "none", cursor: "pointer",
+              font: "inherit", fontSize: 11, lineHeight: 1.4, textAlign: "left", color: FORZA,
+            }}>
+            Responses on this pair were inconsistent —{" "}
+            <span style={{ textDecoration: "underline" }}>
+              {open ? "Hide responses" : "View responses"}
+            </span>
+          </button>
+
+          {open && (
+            <div style={{ marginLeft: GUTTER, width: size, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${HAIR}` }}>
+              <TraitDetail trait={dynamic} items={items!} answers={answers!} />
+              <TraitDetail trait={gentle} items={items!} answers={answers!} />
+              <p style={{ margin: "10px 0 0", fontSize: 9.5, lineHeight: 1.4, color: MUTED }}>
+                Reverse-keyed items score {SCALE_MIN + SCALE_MAX} − response. Highlighted
+                rows sit more than {DRIFT} points from their trait's mean — they pull
+                against the other items in that trait.
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
+
+/* One trait's five items, as answered. The pair's two traits each get one of
+   these under a flagged panel. */
+function TraitDetail({ trait, items, answers }: { trait: TraitScore; items: Item[]; answers: Answers }) {
+  /* Positives first, then the reverse items, so the two means quoted above the
+     table line up with two visible blocks. Item order is otherwise the
+     randomised order the candidate saw them in. */
+  const rows = items
+    .filter((it) => it.trait === trait.key)
+    .sort((a, b) => Number(a.reverse) - Number(b.reverse) || a.id - b.id)
+    .map((it) => {
+      const raw = answers[it.id];
+      const converted = raw == null ? null : itemScore(raw, it.reverse);
+      const drift = converted == null ? 0 : converted - trait.score;
+      return { it, raw, converted, out: Math.abs(drift) > DRIFT, up: drift > 0 };
+    });
+
+  const tone = trait.flagged ? FORZA : MUTED;
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontWeight: 800, letterSpacing: "-0.02em", fontSize: 12, color: INK }}>{trait.name}</span>
+        <span style={{ fontFamily: MONO, fontSize: 11, color: INK }}>{trait.score.toFixed(1)}</span>
+      </div>
+      <div style={{ fontFamily: MONO, fontSize: 9.5, color: tone, marginTop: 2 }}>
+        P {trait.positiveMean.toFixed(1)} · R {trait.reverseMean.toFixed(1)} · gap {trait.gap.toFixed(1)}
+      </div>
+
+      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 6, tableLayout: "fixed" }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: "left" }}>Statement</th>
+            <th style={{ ...th, width: 22 }}>Key</th>
+            <th style={{ ...th, width: 26 }}>Raw</th>
+            <th style={{ ...th, width: 34 }}>Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ it, raw, converted, out, up }) => (
+            <tr key={it.id} style={out ? { background: FORZA + "14" } : undefined}>
+              <td style={{ ...td, textAlign: "left", color: out ? INK : BODY }}>{it.statement}</td>
+              <td style={{ ...td, fontFamily: MONO, color: MUTED }}>{it.reverse ? "R" : "P"}</td>
+              <td style={{ ...td, fontFamily: MONO, color: MUTED }}>{raw ?? "—"}</td>
+              <td style={{ ...td, fontFamily: MONO, fontWeight: out ? 700 : 400, color: out ? FORZA : INK }}>
+                {converted == null ? "—" : `${converted}${out ? (up ? " ↑" : " ↓") : ""}`}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const th: React.CSSProperties = {
+  fontWeight: 500, letterSpacing: ".07em", textTransform: "uppercase", fontSize: 8.5,
+  color: MUTED, textAlign: "right", padding: "0 3px 3px", borderBottom: `1px solid ${HAIR}`,
+};
+const td: React.CSSProperties = {
+  fontSize: 10, lineHeight: 1.35, padding: "4px 3px", textAlign: "right",
+  verticalAlign: "top", borderBottom: `1px solid ${HAIR}`,
+};

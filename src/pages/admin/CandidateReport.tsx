@@ -9,7 +9,7 @@ import ParadoxReport from "../../report/ParadoxReport";
 import { ParadoxReportPDF } from "../../report/ParadoxReportPDF";
 import { PARADOX_SLUG } from "../../lib/assignments";
 import type { Result as StrengthsResult } from "../../lib/instrument";
-import type { Result as ParadoxResult } from "../../lib/paradox";
+import type { Result as ParadoxResult, Item as ParadoxItem, Answers as ParadoxAnswers } from "../../lib/paradox";
 import { PAPER, INK, MUTED, HAIR } from "../../lib/ui";
 
 /* PostgREST returns a many-to-one embed as an object; tolerate an array too. */
@@ -18,6 +18,11 @@ const one = (x: any) => (Array.isArray(x) ? x[0] : x) ?? {};
 export default function CandidateReport() {
   const { id } = useParams();          // assignment id
   const [result, setResult] = useState<unknown>(null);
+  /* Kept alongside the scored result so a flagged paradox panel can show the
+     responses behind it. Shapes differ per instrument, so they are only handed
+     to the paradox report. */
+  const [items, setItems] = useState<unknown>(null);
+  const [answers, setAnswers] = useState<unknown>(null);
   const [name, setName] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "none">("loading");
@@ -32,8 +37,10 @@ export default function CandidateReport() {
       setSlug(inst.slug ?? null);
 
       const { data } = await supabase.from("assessments")
-        .select("result").eq("assignment_id", id).eq("status", "submitted")
+        .select("result, items, answers").eq("assignment_id", id).eq("status", "submitted")
         .order("submitted_at", { ascending: false }).limit(1).maybeSingle();
+      setItems(data?.items ?? null);
+      setAnswers(data?.answers ?? null);
       if (data?.result) { setResult(data.result); setState("ready"); }
       else setState("none");
     })();
@@ -61,7 +68,9 @@ export default function CandidateReport() {
       {state === "loading" && <Center>Loading…</Center>}
       {state === "none" && <Center>This candidate hasn't completed the assessment yet.</Center>}
       {ready && (isParadox
-        ? <ParadoxReport result={result as ParadoxResult} name={name} />
+        ? <ParadoxReport result={result as ParadoxResult} name={name}
+            items={(items as ParadoxItem[] | null) ?? undefined}
+            answers={(answers as ParadoxAnswers | null) ?? undefined} />
         : <ReportView result={result as StrengthsResult} name={name} />)}
     </div>
   );

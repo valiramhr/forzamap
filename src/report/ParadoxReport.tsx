@@ -1,8 +1,13 @@
 import ParadoxPanel from "./ParadoxPanel";
-import { PARADOX_ORDER, type Result } from "../lib/paradox";
+import { PARADOX_ORDER, type Result, type Item, type Answers } from "../lib/paradox";
 import { INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
 
-export default function ParadoxReport({ result, name }: { result: Result; name?: string | null }) {
+/* items and answers are optional: with them, a flagged panel can open the raw
+   responses behind its two traits. Without them the panels render exactly as
+   they did before. */
+export default function ParadoxReport({ result, name, items, answers }: {
+  result: Result; name?: string | null; items?: Item[]; answers?: Answers;
+}) {
   const { zoneCounts, consistency, flaggedCount, thresholdMode, overallMean } = result;
   const byKey = new Map(result.paradoxes.map((p) => [p.key, p]));
   /* result.flaggedCount counts flagged *traits*; a pair is flagged when either
@@ -39,7 +44,7 @@ export default function ParadoxReport({ result, name }: { result: Result; name?:
       <div className="pxgrid">
         {PARADOX_ORDER.map((key) => {
           const p = byKey.get(key);
-          return p ? <ParadoxPanel key={key} result={p} /> : null;
+          return p ? <ParadoxPanel key={key} result={p} items={items} answers={answers} /> : null;
         })}
       </div>
 

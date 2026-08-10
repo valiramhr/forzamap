@@ -110,7 +110,9 @@ export default function PreviewParadox() {
         </PDFDownloadLink>
       </div>
 
-      <ParadoxReport result={result} name={NAME} />
+      {/* The mock set deliberately breaks four traits, so the flagged panels
+          here are what exercises the response detail. */}
+      <ParadoxReport result={result} name={NAME} items={items} answers={answers} />
     </div>
   );
 }

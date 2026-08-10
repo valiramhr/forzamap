@@ -2,7 +2,7 @@ import { Document, Page, Text, View, Image, StyleSheet, Svg, Line, Rect, Circle 
 import { PDF_FONTS } from "./ReportPDF";
 import {
   PARADOX_ORDER, PARADOXES, SCALE_MIN, SCALE_MAX,
-  type Result, type ParadoxResult, type Quadrant,
+  type Result, type ParadoxResult, type Quadrant, type TraitScore,
 } from "../lib/paradox";
 import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
 
@@ -74,6 +74,10 @@ function labelLines(text: string): string[] {
 /* Scale value (1–10) to a 0–100 viewBox / percentage position along the x axis. */
 function pct(v: number) { return ((clamp(v, SCALE_MIN, SCALE_MAX) - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100; }
 
+/* Standard error of the trait score — see the note on the web panel. The score
+   is a mean of five items, so the band belongs at sd/√n, not at the item SD. */
+function stderr(t: TraitScore) { return t.answered > 0 ? t.sd / Math.sqrt(t.answered) : 0; }
+
 const CORNERS: Record<Quadrant, { justifyContent: "flex-start" | "flex-end"; alignItems: "flex-start" | "flex-end"; textAlign: "left" | "right" }> = {
   oneSidedDynamic: { justifyContent: "flex-start", alignItems: "flex-start", textAlign: "left" },
   balanced: { justifyContent: "flex-start", alignItems: "flex-end", textAlign: "right" },
@@ -89,8 +93,10 @@ function Panel({ p }: { p: ParadoxResult }) {
   const cx = pct(p.thresholdX);
   const cyTop = 100 - pct(p.thresholdY);
 
-  const x0 = pct(gentle.score - gentle.sd), x1 = pct(gentle.score + gentle.sd);
-  const yTop = 100 - pct(dynamic.score + dynamic.sd), yBot = 100 - pct(dynamic.score - dynamic.sd);
+  // Uncertainty band: ±1 standard error on each trait, cut off at the plot edge.
+  const gse = stderr(gentle), dse = stderr(dynamic);
+  const x0 = pct(gentle.score - gse), x1 = pct(gentle.score + gse);
+  const yTop = 100 - pct(dynamic.score + dse), yBot = 100 - pct(dynamic.score - dse);
   const ptX = pct(gentle.score), ptY = 100 - pct(dynamic.score);
 
   const boxes: { key: Quadrant; left: number; top: number; w: number; h: number }[] = [
@@ -131,8 +137,10 @@ function Panel({ p }: { p: ParadoxResult }) {
             <Rect x={0} y={0} width={100} height={100} fill="none" stroke={HAIR} strokeWidth={0.5} />
             <Line x1={cx} y1={0} x2={cx} y2={100} stroke={HAIR} strokeWidth={0.5} />
             <Line x1={0} y1={cyTop} x2={100} y2={cyTop} stroke={HAIR} strokeWidth={0.5} />
+            {/* Filled and unstroked: an outlined box reads as a bounded shape,
+                which is the wrong claim for an interval. */}
             <Rect x={x0} y={yTop} width={Math.max(x1 - x0, 0)} height={Math.max(yBot - yTop, 0)}
-              fill="none" stroke={HAIR} strokeWidth={0.5} />
+              fill={HAIR} fillOpacity={0.25} />
             <Circle cx={ptX} cy={ptY} r={2.6} fill={flagged ? "none" : INK} stroke={INK} strokeWidth={1} />
           </Svg>
         </View>

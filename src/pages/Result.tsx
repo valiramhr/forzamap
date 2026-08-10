@@ -9,7 +9,7 @@ import ParadoxReport from "../report/ParadoxReport";
 import { ParadoxReportPDF } from "../report/ParadoxReportPDF";
 import { PARADOX_SLUG } from "../lib/assignments";
 import type { Result as StrengthsResult } from "../lib/instrument";
-import type { Result as ParadoxResult } from "../lib/paradox";
+import type { Result as ParadoxResult, Item as ParadoxItem, Answers as ParadoxAnswers } from "../lib/paradox";
 import { PAPER, INK, MUTED, HAIR } from "../lib/ui";
 
 /* PostgREST returns a many-to-one embed as an object; tolerate an array too. */
@@ -18,6 +18,11 @@ const one = (x: any) => (Array.isArray(x) ? x[0] : x) ?? {};
 export default function Result() {
   const { session, signOut } = useAuth();
   const [result, setResult] = useState<unknown>(null);
+  /* Kept alongside the scored result so a flagged paradox panel can show the
+     responses behind it. Shapes differ per instrument, so they are only handed
+     to the paradox report. */
+  const [items, setItems] = useState<unknown>(null);
+  const [answers, setAnswers] = useState<unknown>(null);
   const [name, setName] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "none">("loading");
@@ -26,7 +31,7 @@ export default function Result() {
     (async () => {
       // the most recently submitted assessment, whichever instrument it was for
       const { data } = await supabase.from("assessments")
-        .select("result, status, assignment:assignments(instrument:instruments(slug))")
+        .select("result, items, answers, status, assignment:assignments(instrument:instruments(slug))")
         .eq("candidate_id", session!.user.id)
         .eq("status", "submitted").order("submitted_at", { ascending: false })
         .limit(1).maybeSingle();
@@ -34,6 +39,8 @@ export default function Result() {
         .select("full_name").eq("user_id", session!.user.id).maybeSingle();
       setName(cand?.full_name ?? null);
       setSlug(one(one((data as any)?.assignment).instrument).slug ?? null);
+      setItems(data?.items ?? null);
+      setAnswers(data?.answers ?? null);
       if (data?.result) { setResult(data.result); setState("ready"); }
       else setState("none");
     })();
@@ -58,7 +65,9 @@ export default function Result() {
         <button onClick={signOut} className="font-label" style={{ ...btn, background: "none", color: MUTED, border: `1px solid ${HAIR}` }}>Sign out</button>
       </Bar>
       {isParadox
-        ? <ParadoxReport result={result as ParadoxResult} name={name} />
+        ? <ParadoxReport result={result as ParadoxResult} name={name}
+            items={(items as ParadoxItem[] | null) ?? undefined}
+            answers={(answers as ParadoxAnswers | null) ?? undefined} />
         : <ReportView result={result as StrengthsResult} name={name} />}
     </div>
   );
