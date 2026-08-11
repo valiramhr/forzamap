@@ -6,7 +6,8 @@ and get a ranked profile they can view online and download as a PDF. Admins send
 invitations and view every candidate's report.
 
 **Stack:** React + TypeScript + Vite · Supabase (Postgres + Auth + Edge Functions)
-· Resend (email) · Vercel (hosting). See `METHODOLOGY.md` for the instrument design.
+· Resend (email) · Vercel (hosting). See `docs/strengths-methodology.md` for the
+instrument design.
 
 ---
 

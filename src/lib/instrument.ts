@@ -2,7 +2,7 @@
    20 themes across 4 domains (5 each), 130 paired items, 20s per item.
    Each theme has 13 statements (10 positive, 3 reverse) and appears exactly
    13 times, so every statement is shown exactly once.
-   See METHODOLOGY.md for the full method. */
+   See docs/strengths-methodology.md for the full method. */
 
 export type DomainKey = "executing" | "influencing" | "relating" | "thinking";
 export type ThemeKey =
@@ -286,7 +286,7 @@ export function score(items: Item[], answers: Answers): Result {
   );
 
   // ── combined rating ──
-  // Calibrated by simulation (see METHODOLOGY §6): across 200 trials each,
+  // Calibrated by simulation (see docs/strengths-methodology.md §6): across 200 trials each,
   // genuine respondents sit at 0-14% circularity and spread 3.9-4.8; uniform
   // random clicking sits at 14-41% and 1.7-3.1.
   let flags = 0;
