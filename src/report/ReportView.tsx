@@ -3,7 +3,7 @@ import { DOMAINS } from "../lib/instrument";
 import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
 
 export default function ReportView({ result, name }: { result: Result; name?: string | null }) {
-  const { themeScores, domainShare, top, consistency } = result;
+  const { themeScores, domainShare, top, quality } = result;
   const lead = domainShare[0];
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "40px 24px", fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif" }}>
@@ -59,9 +59,20 @@ export default function ReportView({ result, name }: { result: Result; name?: st
         ))}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", padding: 16, border: `1px solid ${HAIR}` }}>
-        <span className="font-label" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".07em", color: MUTED }}>Response consistency</span>
-        <span className="font-display" style={{ color: consistency === "Low" ? FORZA : INK }}>{consistency}</span>
+      {/* A High rating stands alone; anything lower carries the signals that
+          pulled it down, so the reader knows what to check in the responses. */}
+      <div style={{ padding: 16, border: `1px solid ${HAIR}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16 }}>
+          <span className="font-label" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".07em", color: MUTED }}>Response quality</span>
+          <span className="font-display" style={{ color: quality.rating === "Low" ? FORZA : INK }}>{quality.rating}</span>
+        </div>
+        {quality.rating !== "High" && quality.reasons.length > 0 && (
+          <ul style={{ margin: "12px 0 0", paddingLeft: 18 }}>
+            {quality.reasons.map((r, i) => (
+              <li key={i} style={{ fontSize: 13, color: BODY, lineHeight: 1.5, marginTop: i ? 6 : 0 }}>{r}</li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

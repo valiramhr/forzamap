@@ -52,13 +52,15 @@ const s = StyleSheet.create({
   rankRow: { flexDirection: "row", alignItems: "center", marginBottom: 7 },
   rankName: { width: 90, fontSize: 10 },
   bar: { flex: 1, height: 6, backgroundColor: HAIR, marginHorizontal: 8 },
-  cons: { flexDirection: "row", justifyContent: "space-between", borderWidth: 1, borderColor: HAIR, padding: 12, marginTop: 16 },
+  cons: { borderWidth: 1, borderColor: HAIR, padding: 12, marginTop: 16 },
+  consHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   consValue: { ...display, letterSpacing: -0.39 },
+  consReason: { fontSize: 9, color: BODY, lineHeight: 1.4, marginTop: 6 },
   foot: { position: "absolute", bottom: 28, left: 48, right: 48, fontSize: 8, color: MUTED },
 });
 
 export function ReportPDF({ result, name }: { result: Result; name?: string | null }) {
-  const { themeScores, domainShare, top, consistency } = result;
+  const { themeScores, domainShare, top, quality } = result;
   const lead = domainShare[0];
   return (
     <Document>
@@ -102,9 +104,16 @@ export function ReportPDF({ result, name }: { result: Result; name?: string | nu
           </View>
         ))}
 
+        {/* A High rating stands alone; anything lower carries the signals that
+            pulled it down, so the reader knows what to check in the responses. */}
         <View style={s.cons}>
-          <Text style={{ color: MUTED }}>RESPONSE CONSISTENCY</Text>
-          <Text style={[s.consValue, { color: consistency === "Low" ? FORZA : INK }]}>{consistency}</Text>
+          <View style={s.consHead}>
+            <Text style={{ color: MUTED }}>RESPONSE QUALITY</Text>
+            <Text style={[s.consValue, { color: quality.rating === "Low" ? FORZA : INK }]}>{quality.rating}</Text>
+          </View>
+          {quality.rating !== "High" && quality.reasons.map((r, i) => (
+            <Text key={i} style={s.consReason}>— {r}</Text>
+          ))}
         </View>
 
         <Text style={s.foot}>

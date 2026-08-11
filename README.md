@@ -1,7 +1,7 @@
 # Strengths Profile
 
 An invite-only, forced-choice strengths assessment. Candidates sign in with a
-magic link (no passwords, no self-signup), complete a timed 102-item instrument,
+magic link (no passwords, no self-signup), complete a timed 130-item instrument,
 and get a ranked profile they can view online and download as a PDF. Admins send
 invitations and view every candidate's report.
 
