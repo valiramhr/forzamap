@@ -134,6 +134,21 @@ const s = StyleSheet.create({
   foot: { position: "absolute", bottom: 28, left: 48, right: 48, fontSize: 8, color: MUTED },
 });
 
+/* react-pdf breaks words to fit a narrow measure, which at the reference
+   column's width set "nav-igate" and "ap-proach". Returning the word whole
+   forbids the break.
+
+   Per-element rather than Font.registerHyphenationCallback, which is global:
+   the Paradox PDF shares this module's font registration, and its quadrant
+   labels do rely on the default breaking. Under the fixed 5.5 threshold every
+   report is scored with, the two documents render identically either way — but
+   the dev preview can score personCentred, which moves the crosshair to the
+   person's own mean, and at an extreme mean a quadrant box narrows to ~18pt
+   and every label in all twelve panels breaks to stay inside it. Registering
+   the callback globally would spill those labels across their neighbours. The
+   prop is read ahead of the global one, so this reaches only these lines. */
+const NO_BREAK = (word: string) => [word];
+
 /* The disclaimer belongs on any page that can be read on its own, and `fixed`
    is what keeps it out of the height accounting on each. */
 function Foot() {
@@ -287,7 +302,7 @@ export function ReportPDF({ result, name, completedAt }: {
                             </>
                           ) : null}
                         </View>
-                        <Text style={s.refText}>
+                        <Text style={s.refText} hyphenationCallback={NO_BREAK}>
                           <Text style={s.refName}>{THEMES[k].name}</Text> — {THEMES[k].desc}
                         </Text>
                       </View>
