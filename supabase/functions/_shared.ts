@@ -41,7 +41,9 @@ const button = (href: string, label: string) => `
   </p>`;
 
 async function sendMail(to: string, subject: string, html: string) {
-  const from = Deno.env.get("INVITE_FROM") ?? "Strengths Profile <onboarding@resend.dev>";
+  // The fallback names the product, not one instrument — the same sender puts
+  // out invitations to every assessment in the catalogue.
+  const from = Deno.env.get("INVITE_FROM") ?? "ForzaMap <onboarding@resend.dev>";
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -61,15 +63,20 @@ async function sendMail(to: string, subject: string, html: string) {
    fetched any number of times: it is the landing page that mints a magic link,
    in the real browser, and that one is used within milliseconds. */
 export async function sendInviteLink(
-  email: string,
-  fullName: string | null | undefined,
-  token: string,
+  { email, fullName, instrument, token }: {
+    email: string;
+    fullName: string | null | undefined;
+    /* The instrument's display name, as the catalogue spells it — an invitation
+       to the Paradox Profile must not arrive announcing a Strengths Profile. */
+    instrument: string;
+    token: string;
+  },
 ) {
   const link = `${siteUrl()}/start/${token}`;
-  await sendMail(email, "Your Strengths Profile link", shell(`
+  await sendMail(email, `Your ${instrument} link`, shell(`
         <p style="font-size:18px">Hi${fullName ? " " + fullName : ""},</p>
-        <p>You've been invited to complete a Strengths Profile. It takes about
-           12 minutes. Use the button below to begin — the link signs you in
+        <p>You've been invited to complete a ${instrument}. Most people finish in
+           10 to 15 minutes. Use the button below to begin — the link signs you in
            directly, so there's no password.</p>
         ${button(link, "Open my assessment")}
         <p style="font-size:13px;color:#6B7280">This link does not expire, and
@@ -81,6 +88,10 @@ export async function sendInviteLink(
 // mint a magic link for an existing user and email it through Resend. This is
 // the sign-in page's fallback for someone who has lost their invitation — the
 // link is single-use and short-lived, and the copy says so.
+//
+// It names no instrument, and can't: it is reached by typing an address into the
+// sign-in page, and the person behind that address may hold several assignments
+// or, being an admin, none.
 export async function sendMagicLink(email: string, fullName?: string | null) {
   const sb = admin();
   const { data, error } = await sb.auth.admin.generateLink({
@@ -92,7 +103,7 @@ export async function sendMagicLink(email: string, fullName?: string | null) {
   const link = data.properties?.action_link;
   if (!link) throw new Error("no action_link returned");
 
-  await sendMail(email, "Your Strengths Profile link", shell(`
+  await sendMail(email, "Your ForzaMap sign-in link", shell(`
         <p style="font-size:18px">Hi${fullName ? " " + fullName : ""},</p>
         <p>Here is the sign-in link you asked for. It signs you in directly, so
            there's no password.</p>

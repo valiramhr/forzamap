@@ -30,8 +30,9 @@ Deno.serve(async (req) => {
     // resolve the instrument before provisioning anyone, so a bad slug can't
     // leave a candidate behind with no assignment
     const slug = instrument_slug ?? "strengths-profile";
+    // the name comes back too: it is what the invitation email calls itself
     const { data: instrument } = await sb
-      .from("instruments").select("id").eq("slug", slug).maybeSingle();
+      .from("instruments").select("id,name").eq("slug", slug).maybeSingle();
     if (!instrument) return json({ error: `unknown instrument: ${slug}` }, 400);
 
     // create the auth user (idempotent: ignore "already registered")
@@ -80,7 +81,7 @@ Deno.serve(async (req) => {
     const token = assignment?.invite_token ?? existing?.invite_token;
     if (!token) throw new Error("assignment has no invite token");
 
-    await sendInviteLink(email, full_name, token);
+    await sendInviteLink({ email, fullName: full_name, instrument: instrument.name, token });
     return json({ ok: true });
   } catch (e) {
     return json({ error: String(e?.message ?? e) }, 500);

@@ -184,21 +184,35 @@ export default function Candidates() {
     setAssigning(null);
   }
 
-  /* The same public function the sign-in page calls, and the same single-use
-     magic link: this is the way back in for someone who has lost their
-     invitation, not the durable link. It answers 200 whether or not the address
-     is known, by design — so a call that came back clean means the request was
-     accepted, and this says that rather than claiming the mail arrived. */
+  /* Sends the invitation again — the same email, carrying the same permanent
+     link. admin-invite only writes a token where there isn't one, so re-inviting
+     an assignment that already has one leaves it alone: whatever the candidate
+     was given before still works, and this is a second copy of it rather than a
+     replacement.
+
+     Deliberately not request-link. That mints a single-use magic link, which is
+     what mail scanners eat — the whole reason the durable token exists. It
+     stays on /login as the self-service way back in for someone who has lost
+     their email; it is not what an admin should be handing out.
+
+     full_name is passed through because admin-invite upserts the candidate row
+     and would otherwise clear it. */
   async function resend(r: Row) {
     setWorking(r.id); setToast(null);
     try {
-      const { data, error } = await supabase.functions.invoke("request-link", { body: { email: r.email } });
+      const { data, error } = await supabase.functions.invoke("admin-invite", {
+        body: { email: r.email, full_name: r.full_name, instrument_slug: r.instrument_slug },
+      });
       const failure = await failureMessage(error, data);
-      setToast(failure
-        ? { ok: false, text: `Could not request a link for ${r.email} — ${failure}` }
-        : { ok: true, text: `A fresh sign-in link has been sent to ${r.email}. It is single-use and expires, and delivery isn't confirmed here — ask them to check spam if it doesn't arrive. Their permanent assessment link is unaffected.` });
+      if (failure) {
+        setToast({ ok: false, text: `Could not re-send the invitation to ${r.email} — ${failure}` });
+        return;
+      }
+      // an assignment that had no token has one now, so the row is refetched
+      await load();
+      setToast({ ok: true, text: `The ${r.instrument_name} invitation has been re-sent to ${r.email}, carrying the same permanent link as before — any copy they already have still works. Delivery isn't confirmed here, so ask them to check spam if it doesn't arrive.` });
     } catch (e: any) {
-      setToast({ ok: false, text: `Could not request a link for ${r.email} — ${String(e?.message ?? e)}` });
+      setToast({ ok: false, text: `Could not re-send the invitation to ${r.email} — ${String(e?.message ?? e)}` });
     } finally {
       setWorking(null);
     }
