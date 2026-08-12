@@ -10,6 +10,7 @@ import Result from "./pages/Result";
 import Invites from "./pages/admin/Invites";
 import Candidates from "./pages/admin/Candidates";
 import CandidateReport from "./pages/admin/CandidateReport";
+import TeamGrid from "./pages/admin/TeamGrid";
 import PreviewParadox from "./pages/PreviewParadox";
 
 function DefaultRoute() {
@@ -33,6 +34,7 @@ export default function App() {
       <Route path="/result" element={<RequireAuth><Result /></RequireAuth>} />
       <Route path="/admin" element={<RequireAdmin><Invites /></RequireAdmin>} />
       <Route path="/admin/candidates" element={<RequireAdmin><Candidates /></RequireAdmin>} />
+      <Route path="/admin/team" element={<RequireAdmin><TeamGrid /></RequireAdmin>} />
       <Route path="/admin/assignments/:id" element={<RequireAdmin><CandidateReport /></RequireAdmin>} />
       {/* Layout preview for the Paradox Profile — mock data, no database, but it
           renders the full report, so it is admin-only like every other report. */}
