@@ -4,6 +4,11 @@ import AdminNav from "./AdminNav";
 import { STRENGTHS_SLUG } from "../../lib/assignments";
 import { DOMAINS, THEMES, score } from "../../lib/instrument";
 import type { DomainKey, ThemeKey, Item, Answers } from "../../lib/instrument";
+import {
+  DOMAIN_ORDER, THEME_ORDER, GROUPS, SHORT, TOP_N, SHOWN_RANKS, SHARED_AT,
+  CARD, IPSATIVE_CAVEAT, band, blend, emptyDomains, plural,
+  type TeamPerson,
+} from "../../lib/teamgrid";
 import { PAPER, INK, MUTED, HAIR, FORZA, BODY } from "../../lib/ui";
 
 /* Team strengths grid — people down the side, themes across the top.
@@ -22,31 +27,14 @@ import { PAPER, INK, MUTED, HAIR, FORZA, BODY } from "../../lib/ui";
    dismissible — a grid this legible invites exactly the comparison the
    instrument cannot support. */
 
-const DOMAIN_ORDER = Object.keys(DOMAINS) as DomainKey[];
-/* THEMES is declared domain by domain, so its key order already groups the
-   columns the way the header does. */
-const THEME_ORDER = Object.keys(THEMES) as ThemeKey[];
-const GROUPS = DOMAIN_ORDER.map((d) => ({
-  domain: d,
-  themes: THEME_ORDER.filter((t) => THEMES[t].domain === d),
-}));
+/* The column order, the rank bands and the thresholds are shared with the PDF
+   export — see lib/teamgrid.ts. */
 
-/* Set vertically in the four summary columns, where the full label would be
-   twice the height of the longest theme name and would set the header row's
-   height on its own. The group header above them carries the full names. */
-const SHORT: Record<DomainKey, string> = {
-  executing: "Executing", influencing: "Influencing",
-  relating: "Relating", thinking: "Thinking",
-};
-
-/** A person's signature strengths — the same top five the report leads with. */
-const TOP_N = 5;
-/** Ranks below this are left blank: past ten, the ordering is noise. */
-const SHOWN_RANKS = 10;
-/** A theme this many people share is a concentration worth naming. */
-const SHARED_AT = 3;
-
-const STORE_KEY = "forzamap.team-grid.v1";
+/* v2 keeps the row order beside the selection, so a dragged order survives a
+   reload the way the team does. v1 held the selection alone, as a bare array,
+   and is still read once so an existing team is not lost. */
+const STORE_KEY = "forzamap.team-grid.v2";
+const STORE_KEY_V1 = "forzamap.team-grid.v1";
 
 /* No cap on team size, so "Add all" over a large pool must not open dozens of
    connections at once. Profiles load a few at a time with a breath between
@@ -63,10 +51,12 @@ const HEAD2_H = 96;
 const NAME_W = 190;
 const CELL_W = 30;
 
-const CARD = "#FFFFFF";
 const FOOT_BG = "#F7F5F1";
 
-type SortMode = "name" | "domain";
+/* Two automatic orders and one the admin arranged by hand. "custom" is only
+   ever reached by dragging or by re-selecting a saved order — the automatic
+   sorts do not fall back into it. */
+type SortMode = "name" | "domain" | "custom";
 
 /** A candidate with a completed Strengths Profile — one row of the pool. */
 interface Eligible {
@@ -89,16 +79,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /* PostgREST returns a many-to-one embed as an object; tolerate an array too. */
 const one = (x: any) => (Array.isArray(x) ? x[0] : x) ?? {};
-
-/** Domain colour at a given opacity, as an 8-digit hex. */
-const tint = (hex: string, a: number) =>
-  hex + Math.round(a * 255).toString(16).padStart(2, "0");
-
-const plural = (n: number, w: string, many = w + "s") => `${n} ${n === 1 ? w : many}`;
-
-function emptyDomains(): Record<DomainKey, number> {
-  return { executing: 0, influencing: 0, relating: 0, thinking: 0 };
-}
 
 /* Scored from the stored items and answers on every read rather than from the
    stored result JSON, for the same reason CandidateReport rescores: the result
@@ -128,29 +108,55 @@ async function loadProfile(assignmentId: string): Promise<Profile> {
   }
 }
 
-/** The selection, as it survives a reload. Anything unreadable is simply dropped. */
-function readStore(): string[] {
+/** The team and the order it is shown in, as they survive a reload. */
+interface Store { selected: string[]; mode: SortMode; order: string[] }
+
+const ids = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+/* Anything unreadable is simply dropped: a corrupt store costs the admin one
+   re-selection, and is not worth a failure state on the page. A custom mode
+   with no order behind it is not restored — it would draw as an arbitrary
+   order under a button claiming somebody arranged it. */
+function readStore(): Store {
+  const empty: Store = { selected: [], mode: "name", order: [] };
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
-    const v = raw ? JSON.parse(raw) : null;
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-  } catch { return []; }
+    if (!raw) return { ...empty, selected: ids(JSON.parse(window.localStorage.getItem(STORE_KEY_V1) || "null")) };
+    const v = JSON.parse(raw) ?? {};
+    const order = ids(v.order);
+    const mode: SortMode = v.mode === "domain" ? "domain"
+      : v.mode === "custom" && order.length ? "custom" : "name";
+    return { selected: ids(v.selected), mode, order };
+  } catch { return empty; }
 }
 
 export default function TeamGrid() {
   const [pool, setPool] = useState<Eligible[]>([]);
   const [poolState, setPoolState] = useState<"loading" | "ready" | "error">("loading");
   const [poolError, setPoolError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string[]>(readStore);
+  const [selected, setSelected] = useState<string[]>(() => readStore().selected);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [query, setQuery] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("name");
+  const [sortMode, setSortMode] = useState<SortMode>(() => readStore().mode);
+  /* The dragged order, as ids. Empty until somebody arranges one; ids that are
+     no longer on the team are simply skipped when the rows are drawn, so
+     removing a person and adding them back does not corrupt the order. */
+  const [order, setOrder] = useState<string[]>(() => readStore().order);
+  const [dragId, setDragId] = useState<string | null>(null);
+  /* Spoken to a screen reader after a move, since a row changing places is
+     silent to anyone not watching the grid. */
+  const [say, setSay] = useState("");
+  const [pdfState, setPdfState] = useState<"idle" | "working" | "error">("idle");
 
   /* Every id ever queued. Dedupes without reading state, so a second "Add all"
      or a re-render mid-flight cannot double-fetch anyone. */
   const known = useRef<Set<string>>(new Set());
   const queue = useRef<string[]>([]);
   const running = useRef(false);
+  /* What the order was when this drag began, so an abandoned drag — dropped
+     outside the grid, or cancelled with Escape — puts the rows back. */
+  const beforeDrag = useRef<{ mode: SortMode; order: string[] } | null>(null);
 
   /* Only candidates with a COMPLETED strengths assignment can appear: a grid
      row is a rank order, and there is no rank order before submission. */
@@ -173,9 +179,14 @@ export default function TeamGrid() {
   const poolIds = useMemo(() => new Set(pool.map((p) => p.id)), [pool]);
   const byId = useMemo(() => new Map(pool.map((p) => [p.id, p])), [pool]);
 
+  /* Written when a drag is not in flight: the order moves on every dragenter,
+     and only the drop is worth committing. */
   useEffect(() => {
-    try { window.localStorage.setItem(STORE_KEY, JSON.stringify(selected)); } catch { /* private mode */ }
-  }, [selected]);
+    if (dragId) return;
+    try {
+      window.localStorage.setItem(STORE_KEY, JSON.stringify({ selected, mode: sortMode, order }));
+    } catch { /* private mode */ }
+  }, [selected, sortMode, order, dragId]);
 
   /* A stored id whose candidate or assignment has since been deleted no longer
      names anybody, so it leaves the selection rather than sitting there as a
@@ -250,11 +261,19 @@ export default function TeamGrid() {
   /* Rows, in the order they are drawn. Alphabetical by default; by domain
      concentration the team clusters into the domain each person leads with,
      which is what makes a lopsided team visible at a glance. Anyone still
-     loading sorts last — their lead domain isn't known yet. */
+     loading sorts last — their lead domain isn't known yet. Custom is whatever
+     the admin dragged: anyone added since sorts alphabetically after them,
+     rather than appearing at an arbitrary point inside an order somebody
+     arranged by hand. */
   const rows = useMemo(() => {
     const list = selected.map((id) => byId.get(id)).filter((p): p is Eligible => !!p);
     const alpha = (a: Eligible, b: Eligible) =>
       a.name.localeCompare(b.name, "en", { sensitivity: "base" });
+    if (sortMode === "custom") {
+      const at = new Map(order.map((id, i) => [id, i]));
+      return list.sort((a, b) =>
+        (at.get(a.id) ?? Infinity) - (at.get(b.id) ?? Infinity) || alpha(a, b));
+    }
     if (sortMode === "name") return list.sort(alpha);
     const lead = (id: string) => {
       const p = profiles[id];
@@ -267,7 +286,7 @@ export default function TeamGrid() {
       const la = lead(a.id), lb = lead(b.id);
       return la.d - lb.d || lb.n - la.n || alpha(a, b);
     });
-  }, [selected, byId, sortMode, profiles]);
+  }, [selected, byId, sortMode, profiles, order]);
 
   const ready = useMemo(
     () => rows.filter((r) => profiles[r.id]?.state === "ready"),
@@ -309,6 +328,95 @@ export default function TeamGrid() {
     .sort((a, b) => holders[b].length - holders[a].length ||
       THEME_ORDER.indexOf(a) - THEME_ORDER.indexOf(b));
 
+  /* ── reordering by hand ───────────────────────────────────────────────
+     No drag-and-drop library: the HTML5 drag events already carry a drop
+     target and a cancel, and the keyboard path below is the part a library
+     would not have given us for free anyway. */
+
+  /* The rows as they stand, with `id` put at `to`. Taken from the drawn order
+     rather than from `order`, so the first drag out of an automatic sort
+     starts from what the admin can see. */
+  const moved = useCallback((id: string, to: number) => {
+    const ids = rows.map((r) => r.id);
+    const from = ids.indexOf(id);
+    if (from === -1) return ids;
+    ids.splice(from, 1);
+    ids.splice(Math.max(0, Math.min(to, ids.length)), 0, id);
+    return ids;
+  }, [rows]);
+
+  const announce = (name: string, at: number) =>
+    setSay(`${name} moved to position ${at + 1} of ${rows.length}.`);
+
+  const startDrag = (id: string) => {
+    beforeDrag.current = { mode: sortMode, order };
+    setDragId(id);
+  };
+
+  /* Dragging reorders as the pointer passes each row, so the grid shows the
+     result before it is committed; the drop is what makes it stick. */
+  const dragOver = (id: string, index: number) => {
+    if (!dragId || dragId === id) return;
+    setOrder(moved(dragId, index));
+    setSortMode("custom");
+  };
+
+  const endDrag = (committed: boolean) => {
+    if (!committed && beforeDrag.current) {
+      setSortMode(beforeDrag.current.mode);
+      setOrder(beforeDrag.current.order);
+    }
+    if (committed && dragId) {
+      const p = rows.find((r) => r.id === dragId);
+      if (p) announce(p.name, rows.findIndex((r) => r.id === dragId));
+    }
+    beforeDrag.current = null;
+    setDragId(null);
+  };
+
+  /* Arrow keys move a focused handle's row one place. Without this the order
+     is mouse-only, and the grid is the one view where the order is the whole
+     point of the interaction. */
+  const nudge = (id: string, by: -1 | 1) => {
+    const from = rows.findIndex((r) => r.id === id);
+    const to = from + by;
+    if (from === -1 || to < 0 || to >= rows.length) return;
+    setOrder(moved(id, to));
+    setSortMode("custom");
+    announce(rows[from].name, to);
+  };
+
+  /* An automatic sort throws the arrangement away, so it asks first. */
+  const chooseSort = (mode: SortMode) => {
+    if (mode === sortMode) return;
+    if (sortMode === "custom" && order.length &&
+      !window.confirm("Discard the custom row order and sort automatically?")) return;
+    if (mode !== "custom") setOrder([]);
+    setSortMode(mode);
+  };
+
+  /* ── exports ──────────────────────────────────────────────────────────
+     Both take the rows as they are drawn, so an arrangement made on screen is
+     the arrangement that leaves the page. */
+
+  function save(blob: Blob, ext: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `team-strengths-${new Date().toISOString().slice(0, 10)}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  /* The rows that have a rank order to export. Anyone still loading or failed
+     is left out of the exports exactly as they are left out of every count. */
+  const exportable = (): TeamPerson[] => ready.flatMap((r) => {
+    const p = profiles[r.id];
+    return p?.state === "ready" ? [{ id: r.id, name: r.name, rank: p.rank, dom: p.dom }] : [];
+  });
+
   function downloadCsv() {
     const cell = (v: string | number) => {
       const s = String(v);
@@ -322,14 +430,23 @@ export default function TeamGrid() {
       return [r.name, r.email, ...ranks];
     });
     const csv = [head, ...body].map((r) => r.map(cell).join(",")).join("\r\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `team-strengths-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    save(new Blob([csv], { type: "text/csv;charset=utf-8" }), "csv");
+  }
+
+  /* The document — and the renderer behind it — is fetched on the click rather
+     than with the page: a grid nobody exports should not pay for a PDF engine. */
+  async function downloadPdf() {
+    setPdfState("working");
+    try {
+      const { teamGridPdfBlob } = await import("../../report/TeamGridPDF");
+      save(await teamGridPdfBlob({
+        people: exportable(), generatedAt: new Date().toISOString(),
+      }), "pdf");
+      setPdfState("idle");
+    } catch (e) {
+      console.error("Team grid PDF failed", e);
+      setPdfState("error");
+    }
   }
 
   const reportHref = (id: string) => `/admin/assignments/${id}`;
@@ -340,20 +457,32 @@ export default function TeamGrid() {
       <div className="tg-wrap">
         <div className="tg-head">
           <h1 className="font-display" style={{ fontSize: "1.8rem", color: INK, margin: 0 }}>Team strengths</h1>
-          <button onClick={downloadCsv} disabled={ready.length === 0}
-            className="font-label tg-btn tg-btn-solid" title="Person-by-theme ranks, one row per person">
-            Download CSV
-          </button>
+          <div className="tg-headbtns">
+            <button onClick={downloadCsv} disabled={ready.length === 0}
+              className="font-label tg-btn" title="Person-by-theme ranks, one row per person">
+              Download CSV
+            </button>
+            <button onClick={downloadPdf} disabled={ready.length === 0 || pdfState === "working"}
+              className="font-label tg-btn tg-btn-solid"
+              title="The grid as it stands, landscape, one row per person">
+              {pdfState === "working" ? "Preparing PDF…" : "Download PDF"}
+            </button>
+          </div>
         </div>
+        {pdfState === "error" && (
+          <p className="tg-fail" role="alert">
+            The PDF could not be built — see the browser console.{" "}
+            <button className="tg-linkbtn" onClick={downloadPdf}>Try again</button>
+          </p>
+        )}
 
         {/* Permanent, and never behind a disclosure. The grid is legible enough
             to invite a comparison the instrument cannot support, so the reason
-            it cannot sits next to it at all times. */}
-        <p className="tg-caveat">
-          Strengths are ranked within each person, so a rank of 3 for one person is not
-          equivalent to a rank of 3 for another. This grid shows what each person leads
-          with and where the team is concentrated or thin — not who is stronger.
-        </p>
+            it cannot sits next to it at all times — and travels with the PDF. */}
+        <p className="tg-caveat">{IPSATIVE_CAVEAT}</p>
+
+        {/* A row changing places is silent to anyone not watching the grid. */}
+        <div className="tg-sr" role="status" aria-live="polite">{say}</div>
 
         {poolState === "loading" && <p style={{ color: MUTED }}>Loading…</p>}
         {poolState === "error" && (
@@ -520,8 +649,13 @@ export default function TeamGrid() {
 
                 <div className="tg-sortbar">
                   <span className="font-label tg-sortlbl">Rows</span>
-                  {([["name", "A to Z"], ["domain", "By domain concentration"]] as const).map(([k, label]) => (
-                    <button key={k} onClick={() => setSortMode(k)} aria-pressed={sortMode === k}
+                  {([["name", "A to Z"], ["domain", "By domain concentration"],
+                    ["custom", "Custom"]] as const).map(([k, label]) => (
+                    <button key={k} onClick={() => chooseSort(k)} aria-pressed={sortMode === k}
+                      /* Custom is a state the grid arrives in by being dragged,
+                         not a sort that can be asked for from nothing. */
+                      disabled={k === "custom" && order.length === 0}
+                      title={k === "custom" ? "Set by dragging a row by its handle" : undefined}
                       className="font-label tg-toggle"
                       style={{ background: sortMode === k ? INK : "transparent",
                         color: sortMode === k ? PAPER : MUTED,
@@ -529,6 +663,7 @@ export default function TeamGrid() {
                       {label}
                     </button>
                   ))}
+                  <span className="tg-sorthint">Drag a row by its handle, or focus one and use ↑ ↓.</span>
                 </div>
               </>
             )}
@@ -539,9 +674,15 @@ export default function TeamGrid() {
                 <div className="tg-grid">
                   <div className="tg-scroll">
                     <table className="tg-table">
+                      {/* The person column and the four summaries are the width
+                          they need; the theme columns are given no width at
+                          all, so a fixed layout hands them what is left of the
+                          table over — one twentieth of the surplus each. That
+                          is what fills the box rather than trailing paper at
+                          the right, and it widens with the window. */}
                       <colgroup>
                         <col style={{ width: NAME_W }} />
-                        {THEME_ORDER.map((t) => <col key={t} style={{ width: CELL_W }} />)}
+                        {THEME_ORDER.map((t) => <col key={t} />)}
                         {DOMAIN_ORDER.map((d) => <col key={d} style={{ width: CELL_W }} />)}
                       </colgroup>
 
@@ -587,15 +728,39 @@ export default function TeamGrid() {
                       </thead>
 
                       <tbody>
-                        {rows.map((r) => {
+                        {rows.map((r, index) => {
                           const p = profiles[r.id];
                           return (
-                            <tr key={r.id} className="tg-row">
+                            /* The row is the drop target, not the handle: the
+                               pointer spends the drag over cells, and a target
+                               the width of the handle would be unhittable. */
+                            <tr key={r.id} className="tg-row" data-dragging={dragId === r.id || undefined}
+                              onDragEnter={() => dragOver(r.id, index)}
+                              onDragOver={(e) => { if (dragId) e.preventDefault(); }}
+                              onDrop={(e) => { e.preventDefault(); endDrag(true); }}>
                               <th scope="row" className="tg-name">
+                                <span className="tg-namewrap">
+                                <button type="button" className="tg-handle" draggable
+                                  onDragStart={(e) => {
+                                    /* Firefox starts no drag without data on the
+                                       transfer, whatever the payload is. */
+                                    e.dataTransfer.setData("text/plain", r.id);
+                                    e.dataTransfer.effectAllowed = "move";
+                                    startDrag(r.id);
+                                  }}
+                                  onDragEnd={() => endDrag(false)}
+                                  onKeyDown={(e) => {
+                                    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                                    e.preventDefault();
+                                    nudge(r.id, e.key === "ArrowUp" ? -1 : 1);
+                                  }}
+                                  aria-label={`Reorder ${r.name} — row ${index + 1} of ${rows.length}. Drag, or use the up and down arrow keys.`}
+                                  title="Drag to reorder · ↑ ↓ to move">⠿</button>
                                 <a href={reportHref(r.id)} target="_blank" rel="noopener noreferrer"
                                   className="tg-namelink" title={`${r.name} — ${r.email} · opens their report`}>
                                   {r.name}
                                 </a>
+                                </span>
                               </th>
                               {p?.state === "ready" ? (
                                 <>
@@ -604,14 +769,11 @@ export default function TeamGrid() {
                                       const rank = p.rank[t];
                                       const cls = `tg-cell${i === 0 ? " tg-dsep" : ""}`;
                                       if (rank > SHOWN_RANKS) return <td key={t} className={cls} />;
-                                      const c = DOMAINS[domain].color;
-                                      const style = rank <= 3
-                                        ? { background: c, color: "#fff", fontWeight: 500 }
-                                        : rank <= 7
-                                          ? { background: tint(c, 0.45), color: INK }
-                                          : { background: tint(c, 0.18), color: MUTED };
+                                      const b = band(rank, DOMAINS[domain].color);
                                       return (
-                                        <td key={t} className={`${cls} font-mono`} style={style}
+                                        <td key={t} className={`${cls} font-mono`}
+                                          style={{ background: b.background, color: b.color,
+                                            fontWeight: b.strong ? 500 : undefined }}
                                           title={`${r.name} — ${THEMES[t].name} ranks ${rank} of 20 for them`}>
                                           {rank}
                                         </td>
@@ -620,7 +782,7 @@ export default function TeamGrid() {
                                   {DOMAIN_ORDER.map((d, i) => (
                                     <td key={d} className={`tg-cell tg-sum font-mono${i === 0 ? " tg-sumsep" : ""}`}
                                       style={{ color: p.dom[d] ? DOMAINS[d].color : HAIR,
-                                        background: p.dom[d] ? tint(DOMAINS[d].color, 0.1) : undefined }}
+                                        background: p.dom[d] ? blend(DOMAINS[d].color, 0.1) : undefined }}
                                       title={`${r.name} — ${p.dom[d]} of their top 5 in ${DOMAINS[d].label}`}>
                                       {p.dom[d] || "·"}
                                     </td>
@@ -672,8 +834,8 @@ export default function TeamGrid() {
                   </div>
                   <p className="tg-legend">
                     <span className="tg-key" style={{ background: INK, color: "#fff" }}>1–3</span>
-                    <span className="tg-key" style={{ background: tint(INK, 0.45), color: INK }}>4–7</span>
-                    <span className="tg-key" style={{ background: tint(INK, 0.18), color: MUTED }}>8–10</span>
+                    <span className="tg-key" style={{ background: blend(INK, 0.45), color: INK }}>4–7</span>
+                    <span className="tg-key" style={{ background: blend(INK, 0.18), color: MUTED }}>8–10</span>
                     <span style={{ color: MUTED }}>
                       Rank within that person, in their theme's domain colour. Blank past {SHOWN_RANKS}.
                       Click a name to open their report.
@@ -756,6 +918,10 @@ export default function TeamGrid() {
         .tg-wrap{max-width:1120px;margin:0 auto;padding:24px 16px 64px;
           font-family:Archivo,ui-sans-serif,system-ui,sans-serif}
         .tg-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
+        .tg-headbtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+        /* Off screen, not display:none — a hidden live region is never read. */
+        .tg-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+          clip:rect(0 0 0 0);white-space:nowrap;border:0}
         .tg-caveat{max-width:70ch;margin:0 0 22px;padding:12px 14px;border-left:3px solid ${FORZA};
           background:#fff;font-size:13px;line-height:1.6;color:${BODY}}
         .tg-empty{padding:22px;border:1px solid ${HAIR};background:#fff}
@@ -815,6 +981,8 @@ export default function TeamGrid() {
         .tg-sortlbl{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};margin-right:4px}
         .tg-toggle{padding:7px 11px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
           border:1px solid ${HAIR};cursor:pointer}
+        .tg-toggle:disabled{opacity:.45;cursor:default}
+        .tg-sorthint{font-size:12px;color:${MUTED};margin-left:4px}
 
         /* ── the grid ─────────────────────────────────────────────────
            Sticky lives inside this box rather than against the window: the
@@ -825,15 +993,25 @@ export default function TeamGrid() {
         /* Sized so that once the page is scrolled down to it the whole box —
            header, rows and footer — clears the sticky admin nav above and the
            legend below. */
-        /* fit-content so the frame ends where the 24 columns end rather than
-           trailing empty paper, and max-width so it still gives way to a
-           horizontal scrollbar on a narrow desktop. */
-        .tg-scroll{overflow:auto;width:fit-content;max-width:100%;
+        /* The box takes the whole container: the table is what fills it, and a
+           frame that stopped where the columns happened to end left ~150px of
+           bare paper down the right of a 1120px page. scrollbar-gutter reserves
+           the vertical scrollbar's width up front, so a long team does not
+           narrow the table when the scrollbar appears. */
+        .tg-scroll{overflow:auto;width:100%;
           max-height:calc(100vh - 176px);min-height:300px;scroll-margin-top:70px;
           border:1px solid ${HAIR};background:${CARD};scrollbar-gutter:stable}
         /* separate, not collapse: a collapsed border belongs to the table and
-           scrolls out from under a sticky cell. */
-        .tg-table{border-collapse:separate;border-spacing:0;table-layout:fixed}
+           scrolls out from under a sticky cell.
+
+           width:100% against a fixed layout is what widens the theme cells: the
+           person column and the four summaries take their stated widths and the
+           twenty columns with no width stated share what is left, one twentieth
+           each. min-width is the old geometry — below it the cells would start
+           squeezing the rank numerals, so the box gives way to a horizontal
+           scrollbar instead, as it always has. */
+        .tg-table{border-collapse:separate;border-spacing:0;table-layout:fixed;
+          width:100%;min-width:${NAME_W + (THEME_ORDER.length + DOMAIN_ORDER.length) * CELL_W}px}
         .tg-table th,.tg-table td{border-right:1px solid ${HAIR};border-bottom:1px solid ${HAIR};
           padding:0;margin:0}
         .tg-dsep{border-left:2px solid ${HAIR}}
@@ -855,12 +1033,25 @@ export default function TeamGrid() {
           white-space:nowrap;font-size:11px;letter-spacing:.02em;color:${INK}}
 
         .tg-name{position:sticky;left:0;z-index:2;background:${CARD};text-align:left;
-          padding:0 10px;font-weight:400;max-width:${NAME_W}px}
-        .tg-namelink{display:block;font-size:13px;color:${INK};text-decoration:none;
+          padding:0 10px 0 4px;font-weight:400;max-width:${NAME_W}px}
+        /* The flex row is inside the cell, not the cell itself: a table cell
+           set to display:flex stops being a cell, and takes the column width
+           and the sticky column with it. */
+        .tg-namewrap{display:flex;align-items:center;gap:4px}
+        .tg-namelink{display:block;flex:1;min-width:0;font-size:13px;color:${INK};text-decoration:none;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .tg-namelink:hover{text-decoration:underline}
+        /* Dim until the row is under the pointer or the handle has focus: a
+           column of grab handles down a 60-row grid is a lot of furniture. */
+        .tg-handle{flex:0 0 auto;padding:2px 3px;background:none;border:none;line-height:1;
+          font-size:12px;color:${HAIR};cursor:grab;touch-action:none}
+        .tg-row:hover .tg-handle,.tg-handle:focus-visible{color:${MUTED}}
+        .tg-handle:active{cursor:grabbing}
         .tg-row{height:28px}
         .tg-row:hover .tg-name,.tg-row:hover .tg-cell{background:${PAPER}}
+        /* The row under the pointer is the one being placed, so the one being
+           moved says so by stepping back rather than by moving twice. */
+        .tg-row[data-dragging] td,.tg-row[data-dragging] th{opacity:.4}
         .tg-cell{text-align:center;vertical-align:middle;font-size:12px;line-height:1}
         .tg-sum{font-size:11px}
         .tg-rowstate{text-align:left;padding:0 10px;font-size:12px}
