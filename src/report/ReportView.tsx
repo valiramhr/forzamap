@@ -1,8 +1,12 @@
 import type { Result } from "../lib/instrument";
 import { DOMAINS } from "../lib/instrument";
-import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
 
-export default function ReportView({ result, name }: { result: Result; name?: string | null }) {
+/* completedAt is optional: it lives on the assignment, and the report also
+   renders from previews and fixtures that have none. */
+export default function ReportView({ result, name, completedAt }: {
+  result: Result; name?: string | null; completedAt?: string | null;
+}) {
   const { themeScores, domainShare, top, quality } = result;
   const lead = domainShare[0];
   return (
@@ -11,7 +15,7 @@ export default function ReportView({ result, name }: { result: Result; name?: st
           the cap height of the F (≈25% of lockup height). */}
       <img src="/brand/forzamap-lockup.svg" alt="ForzaMap" style={{ width: 160, height: "auto", display: "block", marginBottom: 20 }} />
       <p className="font-label" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, marginBottom: 8 }}>
-        {name ? `${name} · ` : ""}Strengths profile
+        {name ? `${name} · ` : ""}Strengths profile{completedAt ? ` · Completed ${fmtReportDate(completedAt)}` : ""}
       </p>
       <h1 className="font-display" style={{ fontSize: "2rem", color: INK, margin: "0 0 10px" }}>You lead with {top[0].name}.</h1>
       <p style={{ color: BODY, lineHeight: 1.6, marginBottom: 28 }}>

@@ -4,7 +4,7 @@ import {
   PARADOX_ORDER, PARADOXES, SCALE_MIN, SCALE_MAX,
   type Result, type ParadoxResult, type Quadrant, type TraitScore,
 } from "../lib/paradox";
-import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
 
 /* All twelve paradoxes on one A4 portrait page.
    A4 is 210 × 297mm; at 15mm margins the live area is 180 × 267mm and the
@@ -248,7 +248,9 @@ function LegendItem({ text, children }: { text: string; children: React.ReactNod
   );
 }
 
-export function ParadoxReportPDF({ result, name }: { result: Result; name?: string | null }) {
+export function ParadoxReportPDF({ result, name, completedAt }: {
+  result: Result; name?: string | null; completedAt?: string | null;
+}) {
   const byKey = new Map(result.paradoxes.map((p) => [p.key, p]));
   const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
   /* Pairs, not result.flaggedCount — that one counts traits. */
@@ -265,6 +267,9 @@ export function ParadoxReportPDF({ result, name }: { result: Result; name?: stri
             </View>
             <View style={s.metaCol}>
               {name ? <Text style={s.nameTxt}>{name}</Text> : null}
+              {/* Labelled, because the line below it is the date the report was
+                  drawn and the two would otherwise be indistinguishable. */}
+              {completedAt ? <Text style={s.meta}>Completed {fmtReportDate(completedAt)}</Text> : null}
               <Text style={s.meta}>{date}</Text>
               <Text style={[s.meta, result.consistency === "Low" ? { color: FORZA } : {}]}>
                 Consistency {result.consistency}

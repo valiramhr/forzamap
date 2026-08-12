@@ -14,6 +14,7 @@ interface Row {
   instrument_name: string;
   status: string;
   invited_at: string;
+  completed_at: string | null;   // set by the submit trigger; null until then
 }
 interface Instrument { slug: string; name: string }
 
@@ -25,13 +26,15 @@ const STATUS: Record<string, { label: string; color: string }> = {
 /* Logical progression through the funnel, not alphabetical — drives the Status sort. */
 const STATUS_ORDER = ["invited", "in_progress", "completed"];
 
-type SortCol = "candidate" | "status" | "sent";
+type SortCol = "candidate" | "status" | "sent" | "completed";
 type SortDir = "asc" | "desc";
 
 /* Mobile has no column headers to click, so the same sorts are offered as a select. */
 const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "sent:desc", label: "Sent — newest first" },
   { value: "sent:asc", label: "Sent — oldest first" },
+  { value: "completed:desc", label: "Completed — newest first" },
+  { value: "completed:asc", label: "Completed — oldest first" },
   { value: "candidate:asc", label: "Candidate — A to Z" },
   { value: "candidate:desc", label: "Candidate — Z to A" },
   { value: "status:asc", label: "Status — invited first" },
@@ -59,12 +62,12 @@ export default function Candidates() {
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("assignments")
-      .select("id,status,invited_at,candidate:candidates!inner(user_id,email,full_name),instrument:instruments!inner(slug,name)")
+      .select("id,status,invited_at,completed_at,candidate:candidates!inner(user_id,email,full_name),instrument:instruments!inner(slug,name)")
       .order("invited_at", { ascending: false });
     setRows(((data ?? []) as any[]).map((a) => {
       const c = one(a.candidate), i = one(a.instrument);
       return {
-        id: a.id, status: a.status, invited_at: a.invited_at,
+        id: a.id, status: a.status, invited_at: a.invited_at, completed_at: a.completed_at ?? null,
         candidate_id: c.user_id, email: c.email, full_name: c.full_name,
         instrument_slug: i.slug, instrument_name: i.name,
       } as Row;
@@ -112,13 +115,22 @@ export default function Candidates() {
     return out.sort((a, b) => {
       if (sortCol === "candidate") return nameOf(a).localeCompare(nameOf(b), "en", { sensitivity: "base" }) * dir;
       if (sortCol === "status") return (STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status)) * dir;
+      if (sortCol === "completed") {
+        /* An unfinished assignment has no date to order by, so those rows
+           collect at the bottom whichever way the column is sorted. */
+        const at = a.completed_at ? Date.parse(a.completed_at) : null;
+        const bt = b.completed_at ? Date.parse(b.completed_at) : null;
+        if (at === null || bt === null) return at === bt ? 0 : at === null ? 1 : -1;
+        return (at - bt) * dir;
+      }
       return (Date.parse(a.invited_at) - Date.parse(b.invited_at)) * dir;
     });
   }, [rows, query, status, sortCol, sortDir]);
 
   function sortBy(col: SortCol) {
     if (col === sortCol) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortCol(col); setSortDir(col === "sent" ? "desc" : "asc"); } // newest first is the natural default for dates
+    // newest first is the natural default for dates
+    else { setSortCol(col); setSortDir(col === "sent" || col === "completed" ? "desc" : "asc"); }
   }
   function clearFilters() { setQuery(""); setStatus("all"); }
 
@@ -149,7 +161,11 @@ export default function Candidates() {
   return (
     <div style={{ minHeight: "100vh", background: PAPER }}>
       <AdminNav />
-      <div className="cand-wrap" style={{ maxWidth: 1000, margin: "0 auto", fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif" }}>
+      {/* 1120 rather than 1000: with Completed added, the seven columns need
+          1006px before anything has to wrap, and a 1000px measure leaves only
+          952px between the padding. 1120 is the width the Paradox report
+          already uses, and it clears the row with room to spare. */}
+      <div className="cand-wrap" style={{ maxWidth: 1120, margin: "0 auto", fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif" }}>
         <h1 className="font-display" style={{ fontSize: "1.8rem", color: INK, marginBottom: 20 }}>Candidates</h1>
 
         {loading ? <p style={{ color: MUTED }}>Loading…</p> : rows.length === 0 ? (
@@ -206,6 +222,7 @@ export default function Candidates() {
                     <th className="cand-th font-label">Assessment</th>
                     {th("status", "Status")}
                     {th("sent", "Sent")}
+                    {th("completed", "Completed")}
                     <th className="cand-th font-label">Report</th>
                     <th className="cand-th font-label">Assign</th>
                   </tr>
@@ -228,6 +245,9 @@ export default function Candidates() {
                         </td>
                         <td className="cand-cell font-mono" data-label="Sent" style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
                           {fmtDate(r.invited_at)}
+                        </td>
+                        <td className="cand-cell font-mono" data-label="Completed" style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
+                          {r.completed_at ? fmtDate(r.completed_at) : "—"}
                         </td>
                         <td className="cand-cell cand-c-report" data-label={done ? undefined : "Report"}>
                           {done
@@ -278,7 +298,11 @@ export default function Candidates() {
         .cand-tbody{display:grid;gap:12px}
         .cand-row{display:block;border:1px solid ${HAIR};padding:14px 16px;background:${PAPER}}
         .cand-cell{display:block}
-        .cand-c-name{margin-bottom:8px}
+        /* An email is one unbreakable word, and a long one sets a floor under
+           the whole column: with seven columns to place, a 50-character address
+           is enough to push the table past even the widened measure. Letting it
+           break keeps the table inside the column whatever the address. */
+        .cand-c-name{margin-bottom:8px;overflow-wrap:anywhere}
         .cand-cell[data-label]{display:flex;align-items:baseline;justify-content:space-between;
           gap:12px;padding:5px 0}
         .cand-cell[data-label]::before{content:attr(data-label);

@@ -1,7 +1,7 @@
 import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
 import type { Result } from "../lib/instrument";
 import { DOMAINS } from "../lib/instrument";
-import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
 
 /* Archivo static TTFs from Google Fonts' font host — react-pdf can only parse TTF,
    not the woff2 the CSS API serves to modern browsers. If registration fails the
@@ -38,7 +38,15 @@ export const PDF_FONTS = { base: BASE, display: DISPLAY, displayWeight: DISPLAY_
 const s = StyleSheet.create({
   page: { padding: 48, backgroundColor: PAPER, fontSize: 11, color: INK, fontFamily: BASE },
   eyebrow: { fontSize: 9, letterSpacing: 2, color: MUTED, textTransform: "uppercase", marginBottom: 8 },
-  h1: { ...display, fontSize: 22, letterSpacing: -0.77, marginBottom: 8 },
+  /* The completion date rides the headline's own line, right-aligned, so it
+     costs the page no height — the tallest report this bank can produce clears
+     the text column by only ~9pt, and a line of its own needs 13. The headline
+     is at most "You lead with Harmoniser." (265pt) and the date at most
+     "COMPLETED 26 SEPTEMBER 2026" (201pt), so the pair cannot fill the 499pt
+     column and neither can wrap, whatever the name. */
+  headRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 },
+  h1: { ...display, fontSize: 22, letterSpacing: -0.77 },
+  headDate: { fontSize: 9, letterSpacing: 2, color: MUTED, textTransform: "uppercase" },
   intro: { color: BODY, lineHeight: 1.5, marginBottom: 14 },
   strip: { flexDirection: "row", height: 12, marginBottom: 6 },
   legendRow: { flexDirection: "row", flexWrap: "wrap", marginBottom: 18 },
@@ -66,7 +74,9 @@ const s = StyleSheet.create({
   foot: { position: "absolute", bottom: 28, left: 48, right: 48, fontSize: 8, color: MUTED },
 });
 
-export function ReportPDF({ result, name }: { result: Result; name?: string | null }) {
+export function ReportPDF({ result, name, completedAt }: {
+  result: Result; name?: string | null; completedAt?: string | null;
+}) {
   const { themeScores, domainShare, top, quality } = result;
   const lead = domainShare[0];
   const half = Math.ceil(themeScores.length / 2);
@@ -74,7 +84,10 @@ export function ReportPDF({ result, name }: { result: Result; name?: string | nu
     <Document>
       <Page size="A4" style={s.page}>
         <Text style={s.eyebrow}>{name ? `${name} — ` : ""}ForzaMap strengths profile</Text>
-        <Text style={s.h1}>You lead with {top[0].name}.</Text>
+        <View style={s.headRow}>
+          <Text style={s.h1}>You lead with {top[0].name}.</Text>
+          {completedAt ? <Text style={s.headDate}>Completed {fmtReportDate(completedAt)}</Text> : null}
+        </View>
         <Text style={s.intro}>Energy leans most toward {lead.label} — {lead.note.toLowerCase()}.</Text>
 
         <View style={s.strip}>
