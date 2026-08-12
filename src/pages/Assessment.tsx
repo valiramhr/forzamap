@@ -20,45 +20,61 @@ export default function Assessment() {
   const uid = session!.user.id;
 
   const [phase, setPhase] = useState<Phase>("loading");
+  const [assignmentId, setAssignmentId] = useState<string | null>(null);
   const [rowId, setRowId] = useState<string | null>(null);
   const [items, setItems] = useState<Item[] | null>(null);
   const [answers, setAnswers] = useState<Answers>({});
   const [current, setCurrent] = useState(0);
   const [timeLeft, setTimeLeft] = useState(TIME_LIMIT);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const lock = useRef(false);
 
-  // load an in-progress attempt or create a new one, scoped to this
-  // candidate's Strengths Profile assignment
+  // resume an in-progress attempt, scoped to this candidate's Strengths Profile
+  // assignment. Nothing is written on mount: the row is created by begin(), so
+  // reading the intro and leaving does not mark the assignment in_progress.
   useEffect(() => {
     (async () => {
-      const assignmentId = await findAssignment(uid, STRENGTHS_SLUG);
-      if (!assignmentId) { setPhase("unassigned"); return; }
+      const aid = await findAssignment(uid, STRENGTHS_SLUG);
+      if (!aid) { setPhase("unassigned"); return; }
+      setAssignmentId(aid);
 
       const { data: existing } = await supabase
-        .from("assessments").select("*").eq("assignment_id", assignmentId)
+        .from("assessments").select("*").eq("assignment_id", aid)
         .order("started_at", { ascending: false }).limit(1).maybeSingle();
 
       if (existing?.status === "submitted") { nav("/result", { replace: true }); return; }
       if (existing?.status === "in_progress") {
+        const saved = existing.items as Item[];
         const done = Object.keys(existing.answers ?? {}).length;
         setRowId(existing.id);
-        setItems(existing.items as Item[]);
+        setItems(saved);
         setAnswers((existing.answers ?? {}) as Answers);
-        setCurrent(done);
-        // an attempt with answers in it is under way; the intro has been read
-        setPhase(done > 0 ? "running" : "intro");
+        setCurrent(Math.min(done, saved.length - 1));
+        setPhase("running"); // already under way — the intro has been read
         return;
       }
-      const fresh = buildItems();
-      const { data, error } = await supabase.from("assessments")
-        .insert({ candidate_id: uid, assignment_id: assignmentId, items: fresh, answers: {}, status: "in_progress" })
-        .select("id").single();
-      if (error) { console.error(error); return; }
-      setRowId(data.id); setItems(fresh); setPhase("intro");
+      // no attempt yet: build the items so the intro can quote a length, but
+      // leave them unsaved until the candidate commits
+      setItems(buildItems());
+      setPhase("intro");
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* Creates the attempt. This insert is what trips the start trigger, so it is
+     deliberately the first thing that happens after "Begin". */
+  async function begin() {
+    if (!items || !assignmentId || starting) return;
+    setStarting(true); setStartError(false);
+    const { data, error } = await supabase.from("assessments")
+      .insert({ candidate_id: uid, assignment_id: assignmentId, items, answers: {}, status: "in_progress" })
+      .select("id").single();
+    setStarting(false);
+    if (error || !data) { console.error(error); setStartError(true); return; }
+    setRowId(data.id); setPhase("running");
+  }
 
   const total = items?.length ?? 0;
 
@@ -128,7 +144,7 @@ export default function Assessment() {
   if (phase === "intro") {
     return (
       <Shell>
-        <Intro total={total} domains={domainEntries} onBegin={() => setPhase("running")} />
+        <Intro total={total} domains={domainEntries} busy={starting} failed={startError} onBegin={begin} />
       </Shell>
     );
   }
@@ -256,9 +272,11 @@ function Sample() {
   );
 }
 
-function Intro({ total, domains, onBegin }: {
+function Intro({ total, domains, busy, failed, onBegin }: {
   total: number;
   domains: [string, { label: string; color: string; note: string }][];
+  busy: boolean;
+  failed: boolean;
   onBegin: () => void;
 }) {
   return (
@@ -289,7 +307,15 @@ function Intro({ total, domains, onBegin }: {
         ))}
       </div>
 
-      <button onClick={onBegin} className="font-label intro-begin">Begin</button>
+      <button onClick={onBegin} disabled={busy} className="font-label intro-begin">
+        {busy ? "Starting…" : failed ? "Try again" : "Begin"}
+      </button>
+      {failed && (
+        <p className="intro-fail" role="alert">
+          Could not start the assessment. Check your connection and try again —
+          nothing has been recorded, so you will start from the first item.
+        </p>
+      )}
     </div>
   );
 }
@@ -371,6 +397,8 @@ function Shell({ children }: { children: React.ReactNode }) {
         .intro-domain-note{color:${BODY};font-size:14px;line-height:1.5}
         .intro-begin{width:100%;margin-top:32px;padding:14px;background:${INK};color:${PAPER};
           font-size:13px;letter-spacing:.07em;text-transform:uppercase;border:none;cursor:pointer}
+        .intro-begin:disabled{opacity:.6;cursor:default}
+        .intro-fail{color:${FORZA};font-size:13px;line-height:1.6;margin:14px 0 0;max-width:36em}
 
         /* ── sample ── deliberately unlike the assessment itself: dashed rule,
            tinted panel, and a badge that stays put while it is answered. */
