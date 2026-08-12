@@ -8,3 +8,8 @@ verify_jwt = false
 
 [functions.request-link]
 verify_jwt = false
+
+# public by design: the caller is an anonymous browser holding an invite link,
+# and the token in the body is the credential being checked
+[functions.redeem-invite]
+verify_jwt = false

@@ -16,6 +16,9 @@ interface Row {
   status: string;
   invited_at: string;
   completed_at: string | null;   // set by the submit trigger; null until then
+  /* The durable half of the invite link. Null only on a row that predates the
+     token migration and has never been re-invited — "Reset link" mints one. */
+  invite_token: string | null;
 }
 interface Instrument { slug: string; name: string }
 /* Row actions report back here rather than inline, so the message survives the
@@ -51,6 +54,17 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const nameOf = (r: Row) => r.full_name ?? r.email;
+/* Where an invite token is redeemed — the URL the invitation email carries. */
+const linkFor = (token: string) => `${window.location.origin}/start/${token}`;
+
+/* A fresh token: 32 random bytes, hex — the same shape admin-invite mints, so a
+   link reset from here is indistinguishable from one issued by an invitation. */
+function newInviteToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -72,15 +86,17 @@ export default function Candidates() {
   const [working, setWorking] = useState<string | null>(null);   // row with an action in flight
   const [toast, setToast] = useState<Toast | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [resetting, setResetting] = useState<Row | null>(null);   // row awaiting reset confirmation
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("assignments")
-      .select("id,status,invited_at,completed_at,candidate:candidates!inner(user_id,email,full_name),instrument:instruments!inner(slug,name)")
+      .select("id,status,invited_at,completed_at,invite_token,candidate:candidates!inner(user_id,email,full_name),instrument:instruments!inner(slug,name)")
       .order("invited_at", { ascending: false });
     setRows(((data ?? []) as any[]).map((a) => {
       const c = one(a.candidate), i = one(a.instrument);
       return {
         id: a.id, status: a.status, invited_at: a.invited_at, completed_at: a.completed_at ?? null,
+        invite_token: a.invite_token ?? null,
         candidate_id: c.user_id, email: c.email, full_name: c.full_name,
         instrument_slug: i.slug, instrument_name: i.name,
       } as Row;
@@ -168,10 +184,11 @@ export default function Candidates() {
     setAssigning(null);
   }
 
-  /* The same public function the sign-in page calls. It answers 200 whether or
-     not the address is known, by design — so a call that came back clean means
-     the request was accepted, and this says that rather than claiming the mail
-     arrived. */
+  /* The same public function the sign-in page calls, and the same single-use
+     magic link: this is the way back in for someone who has lost their
+     invitation, not the durable link. It answers 200 whether or not the address
+     is known, by design — so a call that came back clean means the request was
+     accepted, and this says that rather than claiming the mail arrived. */
   async function resend(r: Row) {
     setWorking(r.id); setToast(null);
     try {
@@ -179,7 +196,7 @@ export default function Candidates() {
       const failure = await failureMessage(error, data);
       setToast(failure
         ? { ok: false, text: `Could not request a link for ${r.email} — ${failure}` }
-        : { ok: true, text: `A fresh sign-in link has been sent to ${r.email}. It is single-use and expires, and delivery isn't confirmed here — ask them to check spam if it doesn't arrive.` });
+        : { ok: true, text: `A fresh sign-in link has been sent to ${r.email}. It is single-use and expires, and delivery isn't confirmed here — ask them to check spam if it doesn't arrive. Their permanent assessment link is unaffected.` });
     } catch (e: any) {
       setToast({ ok: false, text: `Could not request a link for ${r.email} — ${String(e?.message ?? e)}` });
     } finally {
@@ -187,16 +204,45 @@ export default function Candidates() {
     }
   }
 
-  /* Sign-in links are single-use and expire, so there is no durable personal
-     URL to hand out. What can be shared is the sign-in page itself. */
-  async function copySignIn(r: Row) {
-    const url = `${window.location.origin}/login`;
+  /* The candidate's own assessment link — the same URL their invitation email
+     carries. It holds their invite token, so it signs in as them and nobody
+     else: it is theirs to keep and not theirs to pass on. */
+  async function copyAssessmentLink(r: Row) {
+    if (!r.invite_token) {
+      setToast({ ok: false, text: `${nameOf(r)} has no assessment link yet. Use "Reset link" to mint one, then copy it.` });
+      return;
+    }
+    const url = linkFor(r.invite_token);
     try {
       if (!navigator.clipboard) throw new Error("the clipboard is unavailable in this browser");
       await navigator.clipboard.writeText(url);
-      setToast({ ok: true, text: `Copied ${url} — ${nameOf(r)} enters their email address there and is sent a fresh link. This is the sign-in page, not a personal link.` });
+      setToast({ ok: true, text: `Copied ${url} — this is ${nameOf(r)}'s permanent personal link for ${r.instrument_name}. It signs them in, so it must not be forwarded to anyone else. It keeps working until it is reset.` });
     } catch (e: any) {
-      setToast({ ok: false, text: `Could not copy — ${String(e?.message ?? e)}. The sign-in page is ${url}; the candidate enters their email there to be sent a fresh link.` });
+      setToast({ ok: false, text: `Could not copy — ${String(e?.message ?? e)}. The link is ${url} — personal to ${nameOf(r)}, and not to be forwarded.` });
+    }
+  }
+
+  /* Rotation. The old token stops resolving the moment this lands, which is the
+     entire point: it is how a link that reached the wrong inbox is taken back.
+     Nothing else about the assignment moves — the same candidate, the same
+     instrument, whatever answers they have already given. */
+  async function resetLink(r: Row) {
+    setWorking(r.id); setToast(null);
+    try {
+      const token = newInviteToken();
+      const { error } = await supabase.from("assignments")
+        .update({ invite_token: token, invite_token_created_at: new Date().toISOString() })
+        .eq("id", r.id);
+      if (error) {
+        setToast({ ok: false, text: `Could not reset the link for ${r.email} — ${error.message}` });
+        return;
+      }
+      await load();
+      setToast({ ok: true, text: `New link issued for ${nameOf(r)} — ${r.instrument_name}. Any link shared before now is dead. Use "Copy assessment link" to get the new one, or re-invite them to email it.` });
+    } catch (e: any) {
+      setToast({ ok: false, text: `Could not reset the link for ${r.email} — ${String(e?.message ?? e)}` });
+    } finally {
+      setWorking(null); setResetting(null);
     }
   }
 
@@ -349,7 +395,8 @@ export default function Candidates() {
                             <RowMenu who={nameOf(r)} busy={busy} remaining={remaining}
                               onAssign={(slug) => assign(r, slug)}
                               onResend={() => resend(r)}
-                              onCopy={() => copySignIn(r)}
+                              onCopy={() => copyAssessmentLink(r)}
+                              onReset={() => setResetting(r)}
                               onDelete={(scope) => setConfirm({ row: r, scope })} />
                           </div>
                           <div className="cand-stack">
@@ -360,8 +407,11 @@ export default function Candidates() {
                             <button onClick={() => resend(r)} disabled={busy} className="font-label cand-stackbtn">
                               {working === r.id ? "Sending…" : "Resend link"}
                             </button>
-                            <button onClick={() => copySignIn(r)} className="font-label cand-stackbtn">
-                              Copy sign-in link
+                            <button onClick={() => copyAssessmentLink(r)} className="font-label cand-stackbtn">
+                              Copy assessment link
+                            </button>
+                            <button onClick={() => setResetting(r)} disabled={busy} className="font-label cand-stackbtn">
+                              Reset link
                             </button>
                             <button onClick={() => setConfirm({ row: r, scope: "assignment" })} disabled={busy}
                               className="font-label cand-stackbtn cand-danger">Remove this assessment</button>
@@ -383,6 +433,11 @@ export default function Candidates() {
         <ConfirmDelete key={`${confirm.row.id}:${confirm.scope}`} confirm={confirm} rows={rows}
           busy={working === confirm.row.id}
           onCancel={() => setConfirm(null)} onConfirm={() => remove(confirm)} />
+      )}
+
+      {resetting && (
+        <ConfirmReset row={resetting} busy={working === resetting.id}
+          onCancel={() => setResetting(null)} onConfirm={() => resetLink(resetting)} />
       )}
 
       {toast && (
@@ -479,6 +534,11 @@ export default function Candidates() {
           background:none;color:${INK};border:1px solid ${HAIR};cursor:pointer}
         .cand-dlg-go{background:${FORZA};color:#fff;border-color:${FORZA}}
         .cand-dlg-go:disabled{opacity:.45;cursor:not-allowed}
+        /* The reset dialog: same frame, but nothing in it is destroyed, so it
+           does not borrow the delete dialog's warning colour for its edge or
+           its confirm button. */
+        .cand-dlg-mild{border-top-color:${INK}}
+        .cand-dlg-go-mild{background:${INK};border-color:${INK}}
 
         .cand-toast{position:fixed;left:16px;right:16px;bottom:16px;z-index:70;display:flex;
           align-items:flex-start;gap:12px;background:#fff;border:1px solid ${HAIR};border-left-width:3px;
@@ -535,13 +595,14 @@ export default function Candidates() {
    belongs to any row. */
 const MENU_W = 260;
 
-function RowMenu({ who, busy, remaining, onAssign, onResend, onCopy, onDelete }: {
+function RowMenu({ who, busy, remaining, onAssign, onResend, onCopy, onReset, onDelete }: {
   who: string;
   busy: boolean;
   remaining: Instrument[];
   onAssign: (slug: string) => void;
   onResend: () => void;
   onCopy: () => void;
+  onReset: () => void;
   onDelete: (scope: Scope) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -628,7 +689,10 @@ function RowMenu({ who, busy, remaining, onAssign, onResend, onCopy, onDelete }:
                 <p className="cand-mi-note">Every active assessment is already assigned.</p>
               )}
               <button role="menuitem" className="cand-mi" onClick={() => run(onResend)}>Resend link</button>
-              <button role="menuitem" className="cand-mi" onClick={() => run(onCopy)}>Copy sign-in link</button>
+              <button role="menuitem" className="cand-mi" onClick={() => run(onCopy)}>Copy assessment link</button>
+              {/* Reset sits with the link actions rather than below the rule: it
+                  destroys no data, only the old URL. It still confirms first. */}
+              <button role="menuitem" className="cand-mi" onClick={() => run(onReset)}>Reset link</button>
               {/* Ruled off and coloured: the two below destroy data, and nothing
                   above them does. Both open a confirmation before anything goes. */}
               <div className="cand-mi-rule" role="separator" />
@@ -653,6 +717,57 @@ function RowMenu({ who, busy, remaining, onAssign, onResend, onCopy, onDelete }:
         </div>
       )}
     </>
+  );
+}
+
+/* Resetting a link.
+
+   Nothing here is destroyed — no answers, no assignment, no account — but the
+   URL the candidate is holding stops working, and they have no way to find that
+   out except by trying it. So it confirms, and the dialog spends its space on
+   who is affected and what has to happen next. */
+function ConfirmReset({ row, busy, onCancel, onConfirm }: {
+  row: Row;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const go = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => { go.current?.focus(); }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) { e.stopPropagation(); onCancel(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [busy, onCancel]);
+
+  return (
+    <div className="cand-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onCancel(); }}>
+      <div className="cand-dlg cand-dlg-mild" role="dialog" aria-modal="true" aria-labelledby="cand-reset-h">
+        <h2 id="cand-reset-h" className="font-display cand-dlg-h">Reset this link</h2>
+        <p>
+          This issues {nameOf(row)} a new link for <strong>{row.instrument_name}</strong> and
+          kills the current one. Any link already sent or shared — including the one
+          in their invitation email — stops working immediately.
+        </p>
+        <p>
+          Reset it if the link has gone somewhere it shouldn't. Only the link changes:
+          their account, this assignment and any answers already given are untouched.
+        </p>
+        <p className="cand-dlg-warn">
+          They will not be told. Send them the new link — copy it from this menu, or
+          re-invite them to have it emailed.
+        </p>
+
+        <div className="cand-dlg-actions">
+          <button className="font-label cand-dlg-btn" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button ref={go} className="font-label cand-dlg-btn cand-dlg-go cand-dlg-go-mild"
+            onClick={onConfirm} disabled={busy}>
+            {busy ? "Resetting…" : "Reset link"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

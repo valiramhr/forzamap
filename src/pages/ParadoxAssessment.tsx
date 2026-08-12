@@ -30,14 +30,21 @@ export default function ParadoxAssessment() {
   const [items, setItems] = useState<Item[] | null>(null);
   const [answers, setAnswers] = useState<Answers>({});
   const [current, setCurrent] = useState(0);
+  // how much of a resumed attempt was already answered, frozen as the intro
+  // found it — the intro reports it, and it must not move under the reader
+  const [answered, setAnswered] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const lock = useRef(false);
 
-  // resume an in-progress attempt, scoped to this candidate's Paradox Profile
-  // assignment. Nothing is written on mount: the row is created by begin(), so
-  // reading the intro and leaving does not mark the assignment in_progress.
+  // Load an in-progress attempt, scoped to this candidate's Paradox Profile
+  // assignment — but stay on the intro. Every entry goes through the briefing,
+  // resumed or not: the rules are what a returning candidate has had longest to
+  // forget, and the sample is there to be re-read.
+  //
+  // Nothing is written on mount: the row is created by begin(), so reading the
+  // intro and leaving does not mark the assignment in_progress.
   useEffect(() => {
     (async () => {
       const aid = await findAssignment(uid, PARADOX_SLUG);
@@ -51,12 +58,14 @@ export default function ParadoxAssessment() {
       if (existing?.status === "submitted") { nav("/result", { replace: true }); return; }
       if (existing?.status === "in_progress") {
         const saved = existing.items as Item[];
-        const done = Object.keys(existing.answers ?? {}).length;
+        const savedAnswers = (existing.answers ?? {}) as Answers;
+        const done = Object.keys(savedAnswers).length;
         setRowId(existing.id);
         setItems(saved);
-        setAnswers((existing.answers ?? {}) as Answers);
+        setAnswers(savedAnswers);
         setCurrent(Math.min(done, saved.length - 1));
-        setPhase("running"); // already under way — the intro has been read
+        setAnswered(done);
+        setPhase("intro");
         return;
       }
       // no attempt yet: build the items so the intro can quote a length, but
@@ -67,10 +76,17 @@ export default function ParadoxAssessment() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* Creates the attempt. This insert is what trips the start trigger, so it is
-     deliberately the first thing that happens after "Begin". */
+  /* Leaves the intro for the first unanswered statement.
+
+     On a fresh attempt this creates the row, and that insert is what trips the
+     start trigger — so it is deliberately the first thing that happens. On a
+     resumed one the row and the position are already loaded, and there is
+     nothing to write: the candidate has just re-read the briefing, which is not
+     an event the record has any opinion about. */
   async function begin() {
-    if (!items || !assignmentId || starting) return;
+    if (!items || starting) return;
+    if (rowId) { setPhase("running"); return; }
+    if (!assignmentId) return;
     setStarting(true); setStartError(false);
     const { data, error } = await supabase.from("assessments")
       .insert({ candidate_id: uid, assignment_id: assignmentId, items, answers: {}, status: "in_progress" })
@@ -130,7 +146,7 @@ export default function ParadoxAssessment() {
   if (phase === "unassigned") return <Shell><Unassigned /></Shell>;
   if (phase === "loading" || !items) return <Shell><Center>Preparing your assessment…</Center></Shell>;
   if (submitting) return <Shell><Center>Scoring your responses…</Center></Shell>;
-  if (phase === "intro") return <Shell><Intro total={total} busy={starting} failed={startError} onBegin={begin} /></Shell>;
+  if (phase === "intro") return <Shell><Intro total={total} answered={answered} busy={starting} failed={startError} onBegin={begin} /></Shell>;
 
   const it = items[current];
   const chosen = answers[it.id];
@@ -226,13 +242,27 @@ function Sample() {
   );
 }
 
-function Intro({ total, busy, failed, onBegin }: { total: number; busy: boolean; failed: boolean; onBegin: () => void }) {
+/* The briefing. Shown on every entry, including a resumed one — `answered` is
+   null on a fresh attempt and the count already recorded on a resumed one. */
+function Intro({ total, answered, busy, failed, onBegin }: {
+  total: number; answered: number | null; busy: boolean; failed: boolean; onBegin: () => void;
+}) {
+  const resuming = answered != null;
   return (
     <div className="pxwrap pxintro">
       <p className="font-label" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, margin: "0 0 10px" }}>
         Paradox Profile
       </p>
       <h1 className="pxh1">Twelve tensions, one statement at a time.</h1>
+
+      {resuming && (
+        <p className="pxresume" role="status">
+          {answered > 0
+            ? <>You have answered <strong>{answered} of {total}</strong>. You'll pick up where you left off.</>
+            : <>You have opened this assessment before but not answered anything yet. You'll start at the first statement.</>}
+        </p>
+      )}
+
       <ul className="pxlist">
         <li><strong>{total} statements, about 10–14 minutes.</strong> One statement per screen.</li>
         <li><strong>Rate how much you agree with each,</strong> from 1 (strongly disagree)
@@ -247,7 +277,7 @@ function Intro({ total, busy, failed, onBegin }: { total: number; busy: boolean;
       <Sample />
 
       <button onClick={onBegin} disabled={busy} className="font-label pxbegin">
-        {busy ? "Starting…" : "Begin"}
+        {busy ? "Starting…" : failed ? "Try again" : resuming ? "Resume assessment" : "Begin assessment"}
       </button>
       {failed && (
         <p className="pxfail">Could not start the assessment. Check your connection and try again.</p>
@@ -307,6 +337,9 @@ function Shell({ children }: { children: React.ReactNode }) {
         .pxintro{max-width:640px;padding-top:56px}
         .pxh1{font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-weight:800;
           letter-spacing:-0.035em;font-size:1.8rem;color:${INK};margin:0 0 20px}
+        .pxresume{margin:0 0 24px;padding:12px 16px;border-left:3px solid ${INK};
+          background:rgba(42,37,31,.05);color:${BODY};line-height:1.6}
+        .pxresume strong{color:${INK};font-weight:600}
         .pxlist{list-style:none;padding:0;margin:0 0 32px;color:${BODY};line-height:1.6}
         .pxlist li{padding:10px 0;border-bottom:1px solid ${HAIR}}
         .pxlist strong{color:${INK};font-weight:600}

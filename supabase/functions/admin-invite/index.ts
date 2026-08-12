@@ -2,7 +2,7 @@
 // Provisions candidate + assignment, sends link.
 // Deploy WITH jwt verification (default).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { admin, cors, sendMagicLink } from "../_shared.ts";
+import { admin, cors, newInviteToken, sendInviteLink } from "../_shared.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -53,15 +53,34 @@ Deno.serve(async (req) => {
       invited_by: user.id,
     }, { onConflict: "user_id" });
 
+    // Is there already an assignment? Its token is what decides the link, and
+    // it has to be read before the upsert — afterwards there is no way to tell
+    // a token that was already there from one this call just wrote.
+    const { data: existing } = await sb.from("assignments")
+      .select("invite_token")
+      .eq("candidate_id", userId).eq("instrument_id", instrument.id).maybeSingle();
+
     // one row per (candidate, instrument). Re-inviting an existing assignment
     // re-points invited_by but leaves status/invited_at alone, so progress
     // already made on the instrument survives.
-    const { error: aErr } = await sb.from("assignments").upsert({
+    //
+    // The token is written only when the assignment has none. Re-inviting must
+    // not rotate it: the point of a durable link is that the one already shared
+    // keeps working. Rotation is a deliberate, separate act — "Reset link".
+    const { data: assignment, error: aErr } = await sb.from("assignments").upsert({
       candidate_id: userId, instrument_id: instrument.id, invited_by: user.id,
-    }, { onConflict: "candidate_id,instrument_id" });
+      ...(existing?.invite_token ? {} : {
+        invite_token: newInviteToken(),
+        invite_token_created_at: new Date().toISOString(),
+      }),
+    }, { onConflict: "candidate_id,instrument_id" })
+      .select("invite_token").single();
     if (aErr) throw aErr;
 
-    await sendMagicLink(email, full_name);
+    const token = assignment?.invite_token ?? existing?.invite_token;
+    if (!token) throw new Error("assignment has no invite token");
+
+    await sendInviteLink(email, full_name, token);
     return json({ ok: true });
   } catch (e) {
     return json({ error: String(e?.message ?? e) }, 500);

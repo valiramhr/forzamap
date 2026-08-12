@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { RequireAuth, RequireAdmin } from "./components/Guards";
 import { useAuth } from "./auth/AuthProvider";
 import Login from "./pages/Login";
+import StartInvite from "./pages/StartInvite";
 import Assessment from "./pages/Assessment";
 import ParadoxAssessment from "./pages/ParadoxAssessment";
 import CandidateLanding from "./pages/CandidateLanding";
@@ -24,6 +25,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Unguarded: an invite link is opened by someone with no session, and the
+          token in the path is the credential it is opened with. */}
+      <Route path="/start/:token" element={<StartInvite />} />
       <Route path="/assessment" element={<RequireAuth><Assessment /></RequireAuth>} />
       <Route path="/paradox" element={<RequireAuth><ParadoxAssessment /></RequireAuth>} />
       <Route path="/result" element={<RequireAuth><Result /></RequireAuth>} />

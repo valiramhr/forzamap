@@ -1,9 +1,9 @@
 # Strengths Profile
 
-An invite-only, forced-choice strengths assessment. Candidates sign in with a
-magic link (no passwords, no self-signup), complete a timed 130-item instrument,
-and get a ranked profile they can view online and download as a PDF. Admins send
-invitations and view every candidate's report.
+An invite-only, forced-choice strengths assessment. Candidates sign in from a
+durable personal link (no passwords, no self-signup), complete a timed 130-item
+instrument, and get a ranked profile they can view online and download as a PDF.
+Admins send invitations and view every candidate's report.
 
 **Stack:** React + TypeScript + Vite · Supabase (Postgres + Auth + Edge Functions)
 · Resend (email) · Vercel (hosting). See `docs/strengths-methodology.md` for the
@@ -17,6 +17,14 @@ instrument design.
   edge function (service role). The public login page calls `request-link`, which
   re-sends a magic link *only* to addresses already in `candidates` or `admins`, and
   always returns success so unknown addresses can't be probed.
+- **Invitations carry a durable token, not a session.** Each `assignments` row has an
+  unguessable `invite_token`, and the emailed link is `/start/{token}`. Corporate mail
+  scanners pre-fetch URLs, which spends a single-use magic link before the recipient
+  ever clicks it; a token can be fetched any number of times. `/start/{token}` posts it
+  to the public `redeem-invite` function, which mints a magic link *then* — in the real
+  browser, consumed within milliseconds. The token is a bearer credential for that one
+  assignment: don't forward the link, and use **Reset link** on the candidates table to
+  rotate it if it goes astray. `/login` remains the fallback for a lost link.
 - **RLS** (in `supabase/migrations/0001_init.sql`) lets a candidate read and write
   only their own assessment, locks it once submitted, and gives admins read access to
   everyone. Admin status is an `admins` table + an `is_admin()` helper.
@@ -30,7 +38,8 @@ instrument design.
 
 ### 1. Supabase project
 1. Create a project at supabase.com.
-2. **SQL editor →** paste and run `supabase/migrations/0001_init.sql`.
+2. **SQL editor →** paste and run everything in `supabase/migrations/`, in filename
+   order (`0001_init.sql` first).
 3. **Authentication → Providers → Email:** turn **off** "Allow new users to sign up"
    (belt-and-braces; provisioning is done by the edge function).
 4. **Authentication → URL Configuration → Redirect URLs:** add your Vercel URL and
@@ -56,6 +65,8 @@ supabase secrets set INVITE_FROM="Strengths <noreply@yourdomain.com>"
 
 supabase functions deploy admin-invite
 supabase functions deploy request-link --no-verify-jwt
+supabase functions deploy redeem-invite --no-verify-jwt
+supabase functions deploy admin-delete-candidate --no-verify-jwt
 ```
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected
@@ -92,11 +103,15 @@ npm run dev               # http://localhost:5173
 
 ## Using it
 
-- **/login** — anyone enters their email; only invited addresses receive a link.
+- **/start/:token** — where an invitation link lands. No session needed; it trades the
+  token for a sign-in and continues into the assessment.
+- **/login** — the fallback for a lost link: anyone enters their email, and only
+  invited addresses receive one.
 - **/admin** — send invitations (admin only).
 - **/admin/candidates** — status of every candidate; open completed ones to view or
   download their report.
-- **/assessment** — the candidate's timed assessment (resumes if interrupted).
+- **/assessment** — the candidate's timed assessment. Every entry opens on the
+  briefing, resumed or not; the timer starts only when they leave it.
 - **/result** — the candidate's own report + PDF download.
 
 ## Brand

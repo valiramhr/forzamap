@@ -4,6 +4,21 @@
    status code") and hands back the Response as .context. The reason the
    function actually gave is in that body, so read it — a failed address should
    report "unknown instrument: foo", not the wrapper. */
+
+/** The JSON body of a call, whether it succeeded or not — for a function that
+    answers with a machine-readable reason a caller wants to branch on. */
+export async function failureBody(error: any, data: any): Promise<any> {
+  if (!error) return data;
+  const res: Response | undefined =
+    typeof Response !== "undefined" && error?.context instanceof Response ? error.context : undefined;
+  if (!res) return undefined;
+  try {
+    return await res.clone().json();
+  } catch {
+    return undefined; // not JSON — the caller falls back to failureMessage()
+  }
+}
+
 export async function failureMessage(error: any, data: any): Promise<string | undefined> {
   if (!error) {
     const inline = (data as any)?.error;
