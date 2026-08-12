@@ -1,12 +1,13 @@
 import ParadoxPanel from "./ParadoxPanel";
 import { PARADOX_ORDER, type Result, type Item, type Answers } from "../lib/paradox";
-import { PAPER, INK, MUTED, HAIR, FORZA } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, FORZA, fmtCompleted } from "../lib/ui";
 
 /* items and answers are optional: with them, a flagged panel can open the raw
    responses behind its two traits. Without them the panels render exactly as
-   they did before. */
-export default function ParadoxReport({ result, name, items, answers }: {
-  result: Result; name?: string | null; items?: Item[]; answers?: Answers;
+   they did before. completedAt is optional on the same terms — it lives on the
+   assignment, which the preview route has none of. */
+export default function ParadoxReport({ result, name, items, answers, completedAt }: {
+  result: Result; name?: string | null; items?: Item[]; answers?: Answers; completedAt?: string | null;
 }) {
   const { zoneCounts, consistency, flaggedCount } = result;
   const byKey = new Map(result.paradoxes.map((p) => [p.key, p]));
@@ -20,7 +21,7 @@ export default function ParadoxReport({ result, name, items, answers }: {
       <img src="/brand/forzamap-lockup.svg" alt="ForzaMap" style={{ width: 160, height: "auto", display: "block", marginBottom: 20 }} />
 
       <p className="font-label" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, margin: "0 0 8px" }}>
-        {name ? `${name} · ` : ""}Paradox Profile
+        {name ? `${name} · ` : ""}Paradox Profile{completedAt ? ` · Completed ${fmtCompleted(completedAt)}` : ""}
       </p>
       <h1 className="font-display" style={{ fontSize: "2rem", color: INK, margin: "0 0 20px" }}>
         Twelve tensions, held or leaning.

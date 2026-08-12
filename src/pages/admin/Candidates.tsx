@@ -14,6 +14,7 @@ interface Row {
   instrument_name: string;
   status: string;
   invited_at: string;
+  completed_at: string | null;   // null until the submit trigger stamps it
 }
 interface Instrument { slug: string; name: string }
 
@@ -25,13 +26,18 @@ const STATUS: Record<string, { label: string; color: string }> = {
 /* Logical progression through the funnel, not alphabetical — drives the Status sort. */
 const STATUS_ORDER = ["invited", "in_progress", "completed"];
 
-type SortCol = "candidate" | "status" | "sent";
+type SortCol = "candidate" | "status" | "sent" | "completed";
 type SortDir = "asc" | "desc";
+
+/* Date columns open newest-first; the rest open A-to-Z. */
+const DATE_COLS: SortCol[] = ["sent", "completed"];
 
 /* Mobile has no column headers to click, so the same sorts are offered as a select. */
 const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "sent:desc", label: "Sent — newest first" },
   { value: "sent:asc", label: "Sent — oldest first" },
+  { value: "completed:desc", label: "Completed — newest first" },
+  { value: "completed:asc", label: "Completed — oldest first" },
   { value: "candidate:asc", label: "Candidate — A to Z" },
   { value: "candidate:desc", label: "Candidate — Z to A" },
   { value: "status:asc", label: "Status — invited first" },
@@ -59,12 +65,12 @@ export default function Candidates() {
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("assignments")
-      .select("id,status,invited_at,candidate:candidates!inner(user_id,email,full_name),instrument:instruments!inner(slug,name)")
+      .select("id,status,invited_at,completed_at,candidate:candidates!inner(user_id,email,full_name),instrument:instruments!inner(slug,name)")
       .order("invited_at", { ascending: false });
     setRows(((data ?? []) as any[]).map((a) => {
       const c = one(a.candidate), i = one(a.instrument);
       return {
-        id: a.id, status: a.status, invited_at: a.invited_at,
+        id: a.id, status: a.status, invited_at: a.invited_at, completed_at: a.completed_at ?? null,
         candidate_id: c.user_id, email: c.email, full_name: c.full_name,
         instrument_slug: i.slug, instrument_name: i.name,
       } as Row;
@@ -112,13 +118,21 @@ export default function Candidates() {
     return out.sort((a, b) => {
       if (sortCol === "candidate") return nameOf(a).localeCompare(nameOf(b), "en", { sensitivity: "base" }) * dir;
       if (sortCol === "status") return (STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status)) * dir;
+      if (sortCol === "completed") {
+        /* An unfinished assignment has no date to rank, so it sits below the
+           finished ones whichever way the column is pointed — flipping the
+           direction reorders the completions, it doesn't raft the blanks up. */
+        const x = a.completed_at, y = b.completed_at;
+        if (!x || !y) return x === y ? 0 : x ? -1 : 1;
+        return (Date.parse(x) - Date.parse(y)) * dir;
+      }
       return (Date.parse(a.invited_at) - Date.parse(b.invited_at)) * dir;
     });
   }, [rows, query, status, sortCol, sortDir]);
 
   function sortBy(col: SortCol) {
     if (col === sortCol) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortCol(col); setSortDir(col === "sent" ? "desc" : "asc"); } // newest first is the natural default for dates
+    else { setSortCol(col); setSortDir(DATE_COLS.includes(col) ? "desc" : "asc"); } // newest first is the natural default for dates
   }
   function clearFilters() { setQuery(""); setStatus("all"); }
 
@@ -206,6 +220,7 @@ export default function Candidates() {
                     <th className="cand-th font-label">Assessment</th>
                     {th("status", "Status")}
                     {th("sent", "Sent")}
+                    {th("completed", "Completed")}
                     <th className="cand-th font-label">Report</th>
                     <th className="cand-th font-label">Assign</th>
                   </tr>
@@ -228,6 +243,9 @@ export default function Candidates() {
                         </td>
                         <td className="cand-cell font-mono" data-label="Sent" style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
                           {fmtDate(r.invited_at)}
+                        </td>
+                        <td className="cand-cell font-mono" data-label="Completed" style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
+                          {r.completed_at ? fmtDate(r.completed_at) : "—"}
                         </td>
                         <td className="cand-cell cand-c-report" data-label={done ? undefined : "Report"}>
                           {done
@@ -309,15 +327,21 @@ export default function Candidates() {
           .cand-thead{display:table-header-group}
           .cand-tbody{display:table-row-group}
           .cand-row{display:table-row;border:none;padding:0}
+          /* 8px of gutter rather than 12. Six columns at 12 want 987px where the
+             1000px wrap has only 952 to give, and the two timestamps are the
+             columns that cannot yield — they hold one line each by design, so
+             the overflow lands on the page as a horizontal scrollbar. Dropping
+             4px a side across the row buys back 48 and settles it at 939.
+             Type sizes are untouched; the columns just sit closer. */
           .cand-cell,.cand-cell[data-label]{display:table-cell;vertical-align:middle;
-            padding:14px 12px;border-bottom:1px solid ${HAIR}}
+            padding:14px 8px;border-bottom:1px solid ${HAIR}}
           .cand-cell[data-label]::before{display:none}
           .cand-cell:first-child{padding-left:0}
           .cand-cell:last-child{padding-right:0;text-align:right}
           .cand-c-name{margin-bottom:0}
           .cand-c-report{margin-top:0}
           .cand-c-report .cand-report{width:auto}
-          .cand-th{text-align:left;padding:0 12px 8px;border-bottom:1px solid ${HAIR};
+          .cand-th{text-align:left;padding:0 8px 8px;border-bottom:1px solid ${HAIR};
             font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};
             white-space:nowrap}
           .cand-th:first-child{padding-left:0}

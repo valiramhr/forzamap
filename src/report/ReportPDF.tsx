@@ -1,7 +1,7 @@
 import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
 import type { Result } from "../lib/instrument";
 import { DOMAINS } from "../lib/instrument";
-import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtCompleted } from "../lib/ui";
 
 /* Archivo static TTFs from Google Fonts' font host — react-pdf can only parse TTF,
    not the woff2 the CSS API serves to modern browsers. If registration fails the
@@ -66,14 +66,24 @@ const s = StyleSheet.create({
   foot: { position: "absolute", bottom: 28, left: 48, right: 48, fontSize: 8, color: MUTED },
 });
 
-export function ReportPDF({ result, name }: { result: Result; name?: string | null }) {
+export function ReportPDF({ result, name, completedAt }: {
+  result: Result; name?: string | null; completedAt?: string | null;
+}) {
   const { themeScores, domainShare, top, quality } = result;
   const lead = domainShare[0];
   const half = Math.ceil(themeScores.length / 2);
   return (
     <Document>
       <Page size="A4" style={s.page}>
-        <Text style={s.eyebrow}>{name ? `${name} — ` : ""}ForzaMap strengths profile</Text>
+        {/* The eyebrow is the whole header here, so the completion date joins the
+            name on it. At 9pt tracked 2pt the line holds about 70 characters, so
+            all but the shortest names carry the date onto a second line. That
+            costs 9pt, against roughly 100pt of clear page below the quality box
+            after the 20-theme refit, so it wraps rather than spills. */}
+        <Text style={s.eyebrow}>
+          {name ? `${name} — ` : ""}ForzaMap strengths profile
+          {completedAt ? ` · Completed ${fmtCompleted(completedAt)}` : ""}
+        </Text>
         <Text style={s.h1}>You lead with {top[0].name}.</Text>
         <Text style={s.intro}>Energy leans most toward {lead.label} — {lead.note.toLowerCase()}.</Text>
 
