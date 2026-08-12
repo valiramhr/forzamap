@@ -148,32 +148,81 @@ export default function ParadoxAssessment() {
           <span className="font-mono pxcount">{String(current + 1).padStart(3, "0")} / {total}</span>
         </div>
 
-        {/* Reading text, so Archivo 400 — not the 800 display weight. The trait
-            being measured and the reverse flag are never surfaced. */}
-        <p className="pxstmt">{it.statement}</p>
-
-        <div className="pxscale">
-          {SCALE.map((v) => {
-            const on = chosen === v;
-            return (
-              <button key={v} onClick={() => record(v)} className="font-mono pxopt"
-                aria-label={anchorLabel(v)} aria-pressed={on}
-                style={{ background: on ? INK : "transparent", color: on ? PAPER : INK,
-                  border: `1.5px solid ${on ? INK : HAIR}` }}>
-                {v}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="pxanchors font-label">
-          <span>{SCALE_MIN} — strongly disagree</span>
-          <span>{SCALE_MAX} — strongly agree</span>
-        </div>
+        <StatementScale statement={it.statement} chosen={chosen} onPick={record} />
 
         <p className="font-label pxkbd">Keys 1–9, 0 for 10 · Backspace to go back</p>
       </div>
     </Shell>
+  );
+}
+
+/* ── the statement and its scale, as one component ────────────────────────
+   Used by the live assessment and by the sample on the intro, so what a
+   candidate practises on cannot drift away from what they then sit. */
+function StatementScale({ statement, chosen, onPick }: {
+  statement: string; chosen: number | undefined; onPick: (value: number) => void;
+}) {
+  return (
+    <>
+      {/* Reading text, so Archivo 400 — not the 800 display weight. The trait
+          being measured and the reverse flag are never surfaced. */}
+      <p className="pxstmt">{statement}</p>
+
+      <div className="pxscale">
+        {SCALE.map((v) => {
+          const on = chosen === v;
+          return (
+            <button key={v} onClick={() => onPick(v)} className="font-mono pxopt"
+              aria-label={anchorLabel(v)} aria-pressed={on}
+              style={{ background: on ? INK : "transparent", color: on ? PAPER : INK,
+                border: `1.5px solid ${on ? INK : HAIR}` }}>
+              {v}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="pxanchors font-label">
+        <span>{SCALE_MIN} — strongly disagree</span>
+        <span>{SCALE_MAX} — strongly agree</span>
+      </div>
+    </>
+  );
+}
+
+/* Not from the item bank — a candidate who met this statement again in the real
+   assessment might think their practice answer had carried over. */
+const SAMPLE_STATEMENT = "I usually have a weekend away planned well before it arrives.";
+
+const sampleMeaning = (v: number) =>
+  v <= 2 ? "strong disagreement"
+    : v <= 4 ? "disagreement"
+      : v <= 6 ? "the middle of the scale"
+        : v <= 8 ? "agreement"
+          : "strong agreement";
+
+function Sample() {
+  const [pick, setPick] = useState<number | undefined>(undefined);
+  return (
+    <section className="pxsample" aria-labelledby="pxsample-heading">
+      <div className="pxsample-head">
+        <h2 id="pxsample-heading" className="pxsample-h">Try a sample question</h2>
+        <span className="font-label pxsample-badge">Sample — this answer is not recorded</span>
+      </div>
+      <p className="pxsample-note">
+        This is the real question layout, with a statement that is not part of the
+        assessment. Pick any point on the scale to see how it responds.
+      </p>
+
+      <StatementScale statement={SAMPLE_STATEMENT} chosen={pick} onPick={setPick} />
+
+      <p className="pxsample-result" role="status">
+        {pick == null
+          ? "Choose a number from 1 to 10 above."
+          : `In the assessment, ${pick} would be recorded as ${sampleMeaning(pick)} and you would
+             move straight on to the next statement. Nothing has been saved — this is a sample.`}
+      </p>
+    </section>
   );
 }
 
@@ -185,11 +234,18 @@ function Intro({ total, busy, failed, onBegin }: { total: number; busy: boolean;
       </p>
       <h1 className="pxh1">Twelve tensions, one statement at a time.</h1>
       <ul className="pxlist">
-        <li>{total} statements, one per screen.</li>
-        <li>Rate how much you agree with each, from 1 to 10.</li>
-        <li>It takes about 10–14 minutes. There is no timer.</li>
-        <li>There are no right answers — your first instinct is the best one.</li>
+        <li><strong>{total} statements, about 10–14 minutes.</strong> One statement per screen.</li>
+        <li><strong>Rate how much you agree with each,</strong> from 1 (strongly disagree)
+          to {SCALE_MAX} (strongly agree).</li>
+        <li><strong>There is no timer.</strong> Nothing is counting down and no statement
+          expires — take the time you need.</li>
+        <li><strong>There are no right answers.</strong> Your first instinct is the best one.</li>
+        <li><strong>Your progress is saved.</strong> If you are interrupted, come back to this
+          page and you will pick up where you left off.</li>
       </ul>
+
+      <Sample />
+
       <button onClick={onBegin} disabled={busy} className="font-label pxbegin">
         {busy ? "Starting…" : "Begin"}
       </button>
@@ -248,13 +304,27 @@ function Shell({ children }: { children: React.ReactNode }) {
           font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED}}
         .pxkbd{display:none}
 
-        .pxintro{max-width:560px;padding-top:56px}
+        .pxintro{max-width:640px;padding-top:56px}
         .pxh1{font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-weight:800;
           letter-spacing:-0.035em;font-size:1.8rem;color:${INK};margin:0 0 20px}
         .pxlist{list-style:none;padding:0;margin:0 0 32px;color:${BODY};line-height:1.6}
         .pxlist li{padding:10px 0;border-bottom:1px solid ${HAIR}}
-        .pxbegin{width:100%;padding:14px;background:${INK};color:${PAPER};font-size:13px;
+        .pxlist strong{color:${INK};font-weight:600}
+        .pxbegin{width:100%;margin-top:32px;padding:14px;background:${INK};color:${PAPER};font-size:13px;
           letter-spacing:.07em;text-transform:uppercase;border:none;cursor:pointer}
+
+        /* The sample: deliberately unlike the assessment itself — dashed rule,
+           tinted panel, and a badge that stays put while it is answered. */
+        .pxsample{border:2px dashed ${FORZA};background:rgba(201,100,66,.06);padding:18px 16px}
+        .pxsample-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}
+        .pxsample-h{font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-weight:800;
+          letter-spacing:-0.035em;font-size:1.15rem;color:${INK};margin:0}
+        .pxsample-badge{font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+          background:${FORZA};color:${PAPER};padding:4px 8px}
+        .pxsample-note{color:${BODY};font-size:13px;line-height:1.55;margin:0 0 8px}
+        .pxsample .pxstmt{min-height:0;margin-bottom:20px}
+        .pxsample-result{color:${INK};font-size:13px;line-height:1.55;margin:16px 0 0;
+          padding-top:12px;border-top:1px dashed ${FORZA}}
         .pxbegin:disabled{opacity:.6;cursor:default}
         .pxfail{color:${FORZA};font-size:13px;line-height:1.6;margin:14px 0 0}
 
@@ -269,6 +339,8 @@ function Shell({ children }: { children: React.ReactNode }) {
           .pxintro{padding-top:80px}
           .pxh1{font-size:2rem}
           .pxbegin{width:auto;padding:14px 32px}
+          .pxsample{padding:24px}
+          .pxsample .pxstmt{margin-bottom:24px}
         }
         button:focus-visible{outline:2px solid ${INK};outline-offset:2px}
         @media (prefers-reduced-motion:reduce){*{transition:none!important}}

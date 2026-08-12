@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { failureMessage } from "../../lib/edge";
 import AdminNav from "./AdminNav";
 import { PAPER, INK, MUTED, HAIR, FORZA } from "../../lib/ui";
 
@@ -17,6 +18,9 @@ interface Row {
   completed_at: string | null;   // set by the submit trigger; null until then
 }
 interface Instrument { slug: string; name: string }
+/* Row actions report back here rather than inline, so the message survives the
+   menu closing and the table re-rendering under it. */
+interface Toast { ok: boolean; text: string }
 
 const STATUS: Record<string, { label: string; color: string }> = {
   invited: { label: "Invited", color: "#7A736B" },
@@ -59,6 +63,8 @@ export default function Candidates() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [assigning, setAssigning] = useState<string | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [working, setWorking] = useState<string | null>(null);   // row with an action in flight
+  const [toast, setToast] = useState<Toast | null>(null);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("assignments")
@@ -134,6 +140,14 @@ export default function Candidates() {
   }
   function clearFilters() { setQuery(""); setStatus("all"); }
 
+  /* Long enough to read a two-line message; a failure stays longer, since it is
+     the only place the reason is shown. */
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), toast.ok ? 9000 : 16000);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
   /* Same edge function as the invite page. full_name is passed through because
      admin-invite upserts the candidate row and would otherwise clear it. */
   async function assign(r: Row, slug: string) {
@@ -141,10 +155,42 @@ export default function Candidates() {
     const { data, error } = await supabase.functions.invoke("admin-invite", {
       body: { email: r.email, full_name: r.full_name, instrument_slug: slug },
     });
-    const failure = error?.message ?? (data as any)?.error;
+    const failure = await failureMessage(error, data);
     if (failure) setAssignError(`${r.email} — ${failure}`);
     else await load();
     setAssigning(null);
+  }
+
+  /* The same public function the sign-in page calls. It answers 200 whether or
+     not the address is known, by design — so a call that came back clean means
+     the request was accepted, and this says that rather than claiming the mail
+     arrived. */
+  async function resend(r: Row) {
+    setWorking(r.id); setToast(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("request-link", { body: { email: r.email } });
+      const failure = await failureMessage(error, data);
+      setToast(failure
+        ? { ok: false, text: `Could not request a link for ${r.email} — ${failure}` }
+        : { ok: true, text: `A fresh sign-in link has been sent to ${r.email}. It is single-use and expires, and delivery isn't confirmed here — ask them to check spam if it doesn't arrive.` });
+    } catch (e: any) {
+      setToast({ ok: false, text: `Could not request a link for ${r.email} — ${String(e?.message ?? e)}` });
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  /* Sign-in links are single-use and expire, so there is no durable personal
+     URL to hand out. What can be shared is the sign-in page itself. */
+  async function copySignIn(r: Row) {
+    const url = `${window.location.origin}/login`;
+    try {
+      if (!navigator.clipboard) throw new Error("the clipboard is unavailable in this browser");
+      await navigator.clipboard.writeText(url);
+      setToast({ ok: true, text: `Copied ${url} — ${nameOf(r)} enters their email address there and is sent a fresh link. This is the sign-in page, not a personal link.` });
+    } catch (e: any) {
+      setToast({ ok: false, text: `Could not copy — ${String(e?.message ?? e)}. The sign-in page is ${url}; the candidate enters their email there to be sent a fresh link.` });
+    }
   }
 
   const th = (col: SortCol, label: string) => {
@@ -224,7 +270,7 @@ export default function Candidates() {
                     {th("sent", "Sent")}
                     {th("completed", "Completed")}
                     <th className="cand-th font-label">Report</th>
-                    <th className="cand-th font-label">Assign</th>
+                    <th className="cand-th font-label">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="cand-tbody">
@@ -232,7 +278,7 @@ export default function Candidates() {
                     const st = STATUS[r.status] ?? STATUS.invited;
                     const done = r.status === "completed";
                     const remaining = instruments.filter((i) => !assignedSlugs.get(r.candidate_id)?.has(i.slug));
-                    const busy = assigning === r.id;
+                    const busy = assigning === r.id || working === r.id;
                     return (
                       <tr key={r.id} className="cand-row">
                         <td className="cand-cell cand-c-name">
@@ -254,17 +300,28 @@ export default function Candidates() {
                             ? <button onClick={() => nav(`/admin/assignments/${r.id}`)} className="font-label cand-report">Generate report</button>
                             : <span style={{ color: MUTED }}>—</span>}
                         </td>
-                        <td className="cand-cell cand-c-assign" data-label="Assign">
-                          {remaining.length === 0
-                            ? <span style={{ color: MUTED }}>—</span>
-                            : (
-                              <select className="cand-assign" value="" disabled={busy}
-                                aria-label={`Assign another assessment to ${nameOf(r)}`}
-                                onChange={(e) => { if (e.target.value) assign(r, e.target.value); }}>
-                                <option value="">{busy ? "Sending…" : "Assign another…"}</option>
-                                {remaining.map((i) => <option key={i.slug} value={i.slug}>{i.name}</option>)}
-                              </select>
-                            )}
+                        <td className="cand-cell cand-c-actions">
+                          {/* Desktop gets a menu; the stacked card gets the same
+                              options as plain buttons, where a popover would be
+                              a worse fit than the space it saves. */}
+                          <div className="cand-menu-slot">
+                            <RowMenu who={nameOf(r)} busy={busy} remaining={remaining}
+                              onAssign={(slug) => assign(r, slug)}
+                              onResend={() => resend(r)}
+                              onCopy={() => copySignIn(r)} />
+                          </div>
+                          <div className="cand-stack">
+                            {remaining.map((i) => (
+                              <button key={i.slug} onClick={() => assign(r, i.slug)} disabled={busy}
+                                className="font-label cand-stackbtn">Assign {i.name}</button>
+                            ))}
+                            <button onClick={() => resend(r)} disabled={busy} className="font-label cand-stackbtn">
+                              {working === r.id ? "Sending…" : "Resend link"}
+                            </button>
+                            <button onClick={() => copySignIn(r)} className="font-label cand-stackbtn">
+                              Copy sign-in link
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -275,6 +332,14 @@ export default function Candidates() {
           </>
         )}
       </div>
+
+      {toast && (
+        <div className="cand-toast" role={toast.ok ? "status" : "alert"} aria-live="polite"
+          style={{ borderColor: toast.ok ? INK : FORZA }}>
+          <span style={{ flex: 1, color: toast.ok ? INK : FORZA }}>{toast.text}</span>
+          <button onClick={() => setToast(null)} className="font-label cand-toast-x" aria-label="Dismiss">✕</button>
+        </div>
+      )}
 
       <style>{`
         .cand-wrap{padding:24px 16px}
@@ -315,9 +380,34 @@ export default function Candidates() {
           letter-spacing:.07em;padding:3px 8px;border-radius:4px}
         .cand-report{padding:8px 14px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
           background:${INK};color:${PAPER};border:none;cursor:pointer}
-        .cand-assign{max-width:190px;padding:7px 8px;border:1px solid ${HAIR};background:#fff;
-          font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-size:12px;color:${INK};cursor:pointer}
-        .cand-assign:disabled{opacity:.6;cursor:default}
+
+        /* Mobile: the menu's options, laid out as buttons on the card. */
+        .cand-menu-slot{display:none}
+        .cand-stack{display:grid;gap:6px;margin-top:10px}
+        .cand-stackbtn{padding:9px 12px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+          background:none;color:${INK};border:1px solid ${HAIR};cursor:pointer;text-align:center}
+        .cand-stackbtn:disabled{opacity:.5;cursor:default}
+        .cand-dots{width:36px;height:36px;padding:0;background:none;border:1px solid ${HAIR};
+          color:${INK};font-size:18px;line-height:1;cursor:pointer}
+        .cand-dots:disabled{opacity:.5;cursor:default}
+        .cand-dots-busy{font-size:12px;color:${MUTED}}
+        .cand-menu{position:fixed;z-index:60;background:#fff;border:1px solid ${HAIR};
+          box-shadow:0 8px 24px rgba(42,37,31,.14);padding:4px 0;text-align:left}
+        .cand-mi{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+          padding:10px 14px;background:none;border:none;cursor:pointer;text-align:left;
+          font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-size:13px;color:${INK}}
+        .cand-mi:hover:not(:disabled){background:${PAPER}}
+        .cand-mi:disabled{color:${MUTED};cursor:default}
+        .cand-mi-more{color:${MUTED}}
+        .cand-mi-back{color:${MUTED};font-size:12px}
+        .cand-mi-note{margin:0;padding:6px 14px;font-family:Archivo,ui-sans-serif,system-ui,sans-serif;
+          font-weight:500;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED}}
+
+        .cand-toast{position:fixed;left:16px;right:16px;bottom:16px;z-index:70;display:flex;
+          align-items:flex-start;gap:12px;background:#fff;border:1px solid ${HAIR};border-left-width:3px;
+          padding:14px 16px;box-shadow:0 8px 24px rgba(42,37,31,.14);
+          font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-size:13px;line-height:1.55}
+        .cand-toast-x{background:none;border:none;padding:0;color:${MUTED};font-size:12px;cursor:pointer}
         .cand-sort{display:inline-flex;align-items:center;gap:6px;padding:0;background:none;
           border:none;cursor:pointer;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
         .cand-caret{font-size:9px;line-height:1}
@@ -341,6 +431,10 @@ export default function Candidates() {
           .cand-c-name{margin-bottom:0}
           .cand-c-report{margin-top:0}
           .cand-c-report .cand-report{width:auto}
+          .cand-c-actions{width:1%;white-space:nowrap}
+          .cand-menu-slot{display:block}
+          .cand-stack{display:none}
+          .cand-toast{left:auto;right:24px;bottom:24px;max-width:440px}
           .cand-th{text-align:left;padding:0 12px 8px;border-bottom:1px solid ${HAIR};
             font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};
             white-space:nowrap}
@@ -350,5 +444,129 @@ export default function Candidates() {
         button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid ${INK};outline-offset:2px}
       `}</style>
     </div>
+  );
+}
+
+/* The row menu.
+
+   The popover is positioned fixed from the button's rect rather than absolutely
+   inside the cell: a table cell is an unreliable containing block, and anything
+   drawn inside the last row would otherwise be cut off by the table's own box.
+   Fixed placement also means the menu can flip above the button near the foot of
+   the window. It closes on an outside click, on Escape, and on a scroll — once
+   the page has moved under it, a menu pinned to a viewport coordinate no longer
+   belongs to any row. */
+const MENU_W = 260;
+
+function RowMenu({ who, busy, remaining, onAssign, onResend, onCopy }: {
+  who: string;
+  busy: boolean;
+  remaining: Instrument[];
+  onAssign: (slug: string) => void;
+  onResend: () => void;
+  onCopy: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState<"root" | "assign">("root");
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btn = useRef<HTMLButtonElement | null>(null);
+  const pop = useRef<HTMLDivElement | null>(null);
+
+  const close = useCallback((focus: boolean) => {
+    setOpen(false); setPanel("root");
+    if (focus) btn.current?.focus();
+  }, []);
+
+  // measured after the panel renders, so a flip uses the real height
+  useLayoutEffect(() => {
+    if (!open) return;
+    const b = btn.current?.getBoundingClientRect();
+    if (!b) return;
+    const h = pop.current?.offsetHeight ?? 0;
+    const below = window.innerHeight - b.bottom;
+    const top = h > 0 && below < h + 16 && b.top > h + 16 ? b.top - h - 6 : b.bottom + 6;
+    const left = Math.max(12, Math.min(b.right - MENU_W, window.innerWidth - MENU_W - 12));
+    setPos({ top, left });
+  }, [open, panel]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!pop.current?.contains(t) && !btn.current?.contains(t)) close(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(true); } };
+    const onMove = () => close(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [open, close]);
+
+  const items = () =>
+    Array.from(pop.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])') ?? []);
+
+  // opening, and moving between panels, lands focus on the first item
+  useEffect(() => { if (open) items()[0]?.focus(); }, [open, panel]);
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    const list = items();
+    if (list.length === 0) return;
+    const i = list.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); list[(i + 1) % list.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
+    else if (e.key === "Home") { e.preventDefault(); list[0].focus(); }
+    else if (e.key === "End") { e.preventDefault(); list[list.length - 1].focus(); }
+  }
+
+  const run = (fn: () => void) => { close(false); fn(); };
+
+  return (
+    <>
+      <button ref={btn} onClick={() => (open ? close(false) : setOpen(true))} disabled={busy}
+        className="cand-dots" aria-haspopup="menu" aria-expanded={open}
+        aria-label={`Actions for ${who}`}>
+        {busy ? <span className="font-mono cand-dots-busy">···</span> : <span aria-hidden="true">⋮</span>}
+      </button>
+
+      {open && (
+        <div ref={pop} role="menu" aria-label={`Actions for ${who}`} onKeyDown={onKeyDown}
+          className="cand-menu" style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: MENU_W,
+            visibility: pos ? "visible" : "hidden" }}>
+          {panel === "root" ? (
+            <>
+              <button role="menuitem" className="cand-mi" disabled={remaining.length === 0}
+                onClick={() => setPanel("assign")}>
+                <span>Assign another assessment</span>
+                <span className="cand-mi-more" aria-hidden="true">›</span>
+              </button>
+              {remaining.length === 0 && (
+                <p className="cand-mi-note">Every active assessment is already assigned.</p>
+              )}
+              <button role="menuitem" className="cand-mi" onClick={() => run(onResend)}>Resend link</button>
+              <button role="menuitem" className="cand-mi" onClick={() => run(onCopy)}>Copy sign-in link</button>
+            </>
+          ) : (
+            <>
+              <button role="menuitem" className="cand-mi cand-mi-back" onClick={() => setPanel("root")}>
+                <span aria-hidden="true">‹ </span>Back
+              </button>
+              <p className="cand-mi-note">Assign another assessment</p>
+              {remaining.map((i) => (
+                <button key={i.slug} role="menuitem" className="cand-mi" onClick={() => run(() => onAssign(i.slug))}>
+                  {i.name}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </>
   );
 }

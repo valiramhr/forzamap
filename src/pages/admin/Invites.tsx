@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { failureMessage } from "../../lib/edge";
 import AdminNav from "./AdminNav";
 import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../../lib/ui";
 
@@ -60,28 +61,107 @@ export function parseBulk(raw: string): Parsed {
   return { recipients, invalid, duplicates };
 }
 
-/* invoke() reports any non-2xx as a generic FunctionsHttpError ("…non-2xx
-   status code") and hands back the Response as .context. The reason the
-   function actually gave is in that body, so read it — a failed address should
-   report "unknown instrument: foo", not the wrapper. */
-async function failureMessage(error: any, data: any): Promise<string | undefined> {
-  if (!error) {
-    const inline = (data as any)?.error;
-    return inline ? String(inline) : undefined;
+/* ── CSV ─────────────────────────────────────────────────────────────────
+   A spreadsheet export is the format admins actually have, so it is parsed
+   properly rather than split on commas: quoted fields may contain commas,
+   escaped quotes and newlines, Excel writes CRLF, and Excel's UTF-8 export
+   starts with a byte-order mark. Each record keeps the physical line it began
+   on so a row that cannot be read is reported by its line number in the file. */
+interface CsvRecord { line: number; cells: string[] }
+
+export function parseCsvRecords(raw: string): CsvRecord[] {
+  const text = raw.replace(/^\uFEFF/, "");   // Excel's UTF-8 byte-order mark
+  const out: CsvRecord[] = [];
+  let cells: string[] = [];
+  let field = "";
+  let quoted = false;
+  let physical = 1;   // line of the character being read
+  let start = 1;      // line the current record began on
+  let open = false;   // the current record has had characters
+
+  const begin = () => { if (!open) { start = physical; open = true; } };
+  const endRecord = () => {
+    cells.push(field); field = "";
+    if (cells.some((c) => c.trim() !== "")) out.push({ line: start, cells });
+    cells = []; open = false;
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }   // "" is a literal quote
+        else quoted = false;
+      } else if (ch === "\r" || ch === "\n") {
+        if (ch === "\r" && text[i + 1] === "\n") i++;
+        field += "\n"; physical++;
+      } else field += ch;
+      continue;
+    }
+    if (ch === '"') { begin(); quoted = true; continue; }
+    if (ch === ",") { begin(); cells.push(field); field = ""; continue; }
+    if (ch === "\r" || ch === "\n") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      if (open || field !== "" || cells.length > 0) endRecord();
+      physical++;
+      continue;
+    }
+    begin(); field += ch;
   }
-  const res: Response | undefined =
-    typeof Response !== "undefined" && error?.context instanceof Response ? error.context : undefined;
-  if (res) {
-    try {
-      const body = await res.clone().json();
-      if (body?.error) return String(body.error);
-    } catch { /* not JSON — fall through */ }
-    try {
-      const text = (await res.clone().text()).trim();
-      if (text) return text.slice(0, 300);
-    } catch { /* unreadable — fall through */ }
+  if (open || field !== "" || cells.length > 0) endRecord();
+  return out;
+}
+
+/* The header row is optional: a first row whose first cell reads as a column
+   name is dropped, anything else is treated as data. Column one is the address,
+   column two the optional name; further columns are ignored. */
+const HEADER_RE = /^e-?mail(\s*address)?$/i;
+
+export function parseCsv(raw: string): Parsed {
+  const records = parseCsvRecords(raw);
+  const recipients: Recipient[] = [];
+  const invalid: Flagged[] = [];
+  const duplicates: string[] = [];
+  const seen = new Set<string>();
+
+  const first = records[0];
+  const rows = first && HEADER_RE.test((first.cells[0] ?? "").trim()) ? records.slice(1) : records;
+
+  for (const { line, cells } of rows) {
+    const email = (cells[0] ?? "").trim();
+    const name = (cells[1] ?? "").trim();
+    if (!EMAIL_RE.test(email)) {
+      invalid.push({ line, text: cells.join(",").trim().slice(0, 120) });
+      continue;
+    }
+    const key = email.toLowerCase();
+    if (seen.has(key)) { duplicates.push(email); continue; }
+    seen.add(key);
+    recipients.push({ email, name: name || null });
   }
-  return String(error?.message ?? error);
+
+  return { recipients, invalid, duplicates };
+}
+
+const csvCell = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+/* Written here rather than served as a static file so the template and the
+   parser above can never describe different columns. CRLF because the file is
+   opened in a spreadsheet far more often than in a text editor. */
+const TEMPLATE_ROWS = [
+  ["email", "full_name"],
+  ["jordan@example.com", "Jordan Lee"],
+  ["sam@example.com", ""],
+];
+
+function downloadTemplate() {
+  const csv = TEMPLATE_ROWS.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "invites-template.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  // Safari needs the URL to outlive the click
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /* One address, one outcome. Always resolves: a throw here would abort the
@@ -110,7 +190,10 @@ export default function Invites() {
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<{ email: string; instrument: string; ok: boolean; msg?: string }[]>([]);
 
-  // bulk
+  // bulk — a loaded file is the source; the textarea is the fallback
+  const [csv, setCsv] = useState<{ name: string; parsed: Parsed } | null>(null);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [pasting, setPasting] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [queue, setQueue] = useState<Recipient[]>([]);
   const [results, setResults] = useState<Outcome[]>([]);
@@ -155,7 +238,31 @@ export default function Invites() {
     };
   }, [running]);
 
-  const parsed = useMemo(() => parseBulk(bulkText), [bulkText]);
+  const pasted = useMemo(() => parseBulk(bulkText), [bulkText]);
+  /* One source at a time, so an address can never be sent twice from one batch:
+     a loaded file wins, and the paste box is only offered once it is removed. */
+  const source = csv ? csv.parsed : pasted;
+  const showPreview = csv !== null || bulkText.trim() !== "";
+
+  async function readFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";              // so the same file can be chosen again
+    if (!file) return;
+    setCsvError(null);
+    try {
+      const parsed = parseCsv(await file.text());
+      if (parsed.recipients.length === 0 && parsed.invalid.length === 0) {
+        setCsv(null);
+        setCsvError(`${file.name} has no rows in it.`);
+        return;
+      }
+      setCsv({ name: file.name, parsed });
+      setPasting(false);
+    } catch (err: any) {
+      setCsv(null);
+      setCsvError(`Could not read ${file.name} — ${String(err?.message ?? err)}`);
+    }
+  }
 
   async function invite() {
     if (!email || !slug || busy) return;
@@ -194,7 +301,7 @@ export default function Invites() {
   const failures = results.filter((r) => !r.ok);
   const sent = results.length - failures.length;
   const done = queue.length > 0 && !running && results.length > 0;
-  const canSendBulk = !running && parsed.recipients.length > 0 && !!slug;
+  const canSendBulk = !running && source.recipients.length > 0 && !!slug;
 
   return (
     <div style={{ minHeight: "100vh", background: PAPER }}>
@@ -250,57 +357,80 @@ export default function Invites() {
           </>
         ) : (
           <>
-            <label style={lbl} htmlFor="inv-bulk">Addresses — one per line</label>
-            <textarea id="inv-bulk" value={bulkText} onChange={(e) => setBulkText(e.target.value)} disabled={running}
-              rows={8} style={{ ...inp, resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13, lineHeight: 1.6 }}
-              placeholder={"jordan@example.com\nsam@example.com, Sam Okafor\nalex@example.com; robin@example.com"} />
-            <p style={{ color: MUTED, fontSize: 12, lineHeight: 1.6, margin: "2px 0 4px" }}>
-              Commas and semicolons work too. Add a name after the address —
-              <span className="font-mono"> sam@example.com, Sam Okafor</span> — and it is used for that invitation.
+            <label style={lbl} htmlFor="inv-csv">Upload a CSV</label>
+            <p style={{ color: MUTED, fontSize: 12, lineHeight: 1.6, margin: "0 0 10px" }}>
+              Two columns: <span className="font-mono">email</span> and <span className="font-mono">full_name</span>.
+              The name is optional — leave it blank and the invitation goes out to the address alone.
+              A header row is read either way. Everyone in the file is invited to
+              the one assessment selected above.
             </p>
 
-            {bulkText.trim() !== "" && (
-              <div style={{ border: `1px solid ${HAIR}`, background: "#fff", padding: "14px 16px", margin: "12px 0" }}>
-                <div className="font-label" style={{ fontSize: 11, letterSpacing: ".07em", textTransform: "uppercase", color: MUTED, marginBottom: 10 }}>
-                  Preview — {parsed.recipients.length} {parsed.recipients.length === 1 ? "invitation" : "invitations"} to {labelFor(slug)}
-                </div>
-                {parsed.recipients.length > 0 && (
-                  <ol style={{ margin: 0, padding: 0, listStyle: "none", maxHeight: 220, overflowY: "auto" }}>
-                    {parsed.recipients.map((r) => (
-                      <li key={r.email} className="font-mono" style={{ fontSize: 12, color: INK, padding: "3px 0" }}>
-                        {r.email}{r.name ? <span style={{ color: MUTED }}> · {r.name}</span> : null}
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                {parsed.duplicates.length > 0 && (
-                  <p style={{ color: MUTED, fontSize: 12, margin: "10px 0 0" }}>
-                    {parsed.duplicates.length} duplicate {parsed.duplicates.length === 1 ? "address" : "addresses"} collapsed:{" "}
-                    <span className="font-mono">{parsed.duplicates.join(", ")}</span>
-                  </p>
-                )}
-                {parsed.invalid.length > 0 && (
-                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIR}` }}>
-                    <div className="font-label" style={{ fontSize: 11, letterSpacing: ".07em", textTransform: "uppercase", color: FORZA, marginBottom: 6 }}>
-                      {parsed.invalid.length} {parsed.invalid.length === 1 ? "line" : "lines"} not read as an email address — these will not be sent
-                    </div>
-                    {parsed.invalid.map((f, i) => (
-                      <div key={i} className="font-mono" style={{ fontSize: 12, color: FORZA, padding: "2px 0" }}>
-                        line {f.line}: {f.text}
-                      </div>
-                    ))}
-                  </div>
-                )}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 6 }}>
+              <button onClick={downloadTemplate} className="font-label"
+                style={{ padding: "9px 14px", fontSize: 11, letterSpacing: ".07em", textTransform: "uppercase",
+                  background: "none", color: INK, border: `1px solid ${INK}`, cursor: "pointer" }}>
+                Download template
+              </button>
+              <input id="inv-csv" type="file" accept=".csv,text/csv" onChange={readFile} disabled={running}
+                style={{ flex: "1 1 220px", fontSize: 13, color: BODY, minWidth: 0 }} />
+            </div>
+
+            {csv && (
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap",
+                border: `1px solid ${HAIR}`, background: "#fff", padding: "10px 12px", margin: "8px 0 4px" }}>
+                <span className="font-mono" style={{ fontSize: 12, color: INK, wordBreak: "break-all" }}>{csv.name}</span>
+                <span style={{ fontSize: 12, color: MUTED, flex: 1 }}>
+                  {csv.parsed.recipients.length} {csv.parsed.recipients.length === 1 ? "address" : "addresses"}
+                </span>
+                <button onClick={() => { setCsv(null); setCsvError(null); }} disabled={running} className="font-label"
+                  style={{ background: "none", border: "none", padding: 0, color: FORZA, fontSize: 11, letterSpacing: ".07em",
+                    textTransform: "uppercase", cursor: running ? "default" : "pointer", opacity: running ? 0.5 : 1 }}>
+                  Remove
+                </button>
               </div>
             )}
+            {csvError && <p style={{ color: FORZA, fontSize: 12, lineHeight: 1.6, margin: "8px 0 0" }}>{csvError}</p>}
 
-            <button onClick={() => runBatch(parsed.recipients, slug)} disabled={!canSendBulk} className="font-label"
+            {csv ? (
+              <p style={{ color: MUTED, fontSize: 12, lineHeight: 1.6, margin: "10px 0 0" }}>
+                Remove the file to paste addresses instead.
+              </p>
+            ) : (
+              <>
+                <button onClick={() => setPasting((p) => !p)} disabled={running} className="font-label"
+                  aria-expanded={pasting} aria-controls="inv-bulk"
+                  style={{ background: "none", border: "none", padding: "10px 0 0", color: MUTED, fontSize: 11,
+                    letterSpacing: ".07em", textTransform: "uppercase", cursor: running ? "default" : "pointer",
+                    textDecoration: "underline" }}>
+                  {pasting ? "Hide the paste box" : "Or paste addresses instead"}
+                </button>
+
+                {pasting && (
+                  <>
+                    <label style={lbl} htmlFor="inv-bulk">Addresses — one per line</label>
+                    <textarea id="inv-bulk" value={bulkText} onChange={(e) => setBulkText(e.target.value)} disabled={running}
+                      rows={8} style={{ ...inp, resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13, lineHeight: 1.6 }}
+                      placeholder={"jordan@example.com\nsam@example.com, Sam Okafor\nalex@example.com; robin@example.com"} />
+                    <p style={{ color: MUTED, fontSize: 12, lineHeight: 1.6, margin: "2px 0 4px" }}>
+                      Commas and semicolons work too. Add a name after the address —
+                      <span className="font-mono"> sam@example.com, Sam Okafor</span> — and it is used for that invitation.
+                    </p>
+                  </>
+                )}
+              </>
+            )}
+
+            {showPreview && (
+              <Preview parsed={source} instrument={labelFor(slug)} from={csv?.name ?? null} />
+            )}
+
+            <button onClick={() => runBatch(source.recipients, slug)} disabled={!canSendBulk} className="font-label"
               style={{ ...btn, opacity: canSendBulk ? 1 : 0.6 }}>
               {running
                 ? `Sending ${Math.min(results.length + 1, queue.length)} of ${queue.length}…`
-                : parsed.recipients.length === 0
+                : source.recipients.length === 0
                   ? "Send invitations"
-                  : `Send ${parsed.recipients.length} ${parsed.recipients.length === 1 ? "invitation" : "invitations"}`}
+                  : `Send ${source.recipients.length} ${source.recipients.length === 1 ? "invitation" : "invitations"}`}
             </button>
 
             {queue.length > 0 && (
@@ -348,6 +478,47 @@ export default function Invites() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/* Shared by both bulk sources so a file and a pasted list are reviewed the same
+   way: what will be sent, what was collapsed, and — by line number — what could
+   not be read. A bad row is shown rather than dropped. */
+function Preview({ parsed, instrument, from }: { parsed: Parsed; instrument: string; from: string | null }) {
+  return (
+    <div style={{ border: `1px solid ${HAIR}`, background: "#fff", padding: "14px 16px", margin: "12px 0" }}>
+      <div className="font-label" style={{ fontSize: 11, letterSpacing: ".07em", textTransform: "uppercase", color: MUTED, marginBottom: 10 }}>
+        Preview — {parsed.recipients.length} {parsed.recipients.length === 1 ? "invitation" : "invitations"} to {instrument}
+        {from ? ` · ${from}` : ""}
+      </div>
+      {parsed.recipients.length > 0 && (
+        <ol style={{ margin: 0, padding: 0, listStyle: "none", maxHeight: 220, overflowY: "auto" }}>
+          {parsed.recipients.map((r) => (
+            <li key={r.email} className="font-mono" style={{ fontSize: 12, color: INK, padding: "3px 0" }}>
+              {r.email}{r.name ? <span style={{ color: MUTED }}> · {r.name}</span> : null}
+            </li>
+          ))}
+        </ol>
+      )}
+      {parsed.duplicates.length > 0 && (
+        <p style={{ color: MUTED, fontSize: 12, margin: "10px 0 0" }}>
+          {parsed.duplicates.length} duplicate {parsed.duplicates.length === 1 ? "address" : "addresses"} collapsed:{" "}
+          <span className="font-mono">{parsed.duplicates.join(", ")}</span>
+        </p>
+      )}
+      {parsed.invalid.length > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIR}` }}>
+          <div className="font-label" style={{ fontSize: 11, letterSpacing: ".07em", textTransform: "uppercase", color: FORZA, marginBottom: 6 }}>
+            {parsed.invalid.length} {parsed.invalid.length === 1 ? "line" : "lines"} not read as an email address — these will not be sent
+          </div>
+          {parsed.invalid.map((f, i) => (
+            <div key={i} className="font-mono" style={{ fontSize: 12, color: FORZA, padding: "2px 0" }}>
+              line {f.line}: {f.text}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
