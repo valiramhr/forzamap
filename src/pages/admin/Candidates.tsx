@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { failureMessage } from "../../lib/edge";
 import AdminNav from "./AdminNav";
-import { PAPER, INK, MUTED, HAIR, FORZA } from "../../lib/ui";
+import { PAPER, INK, MUTED, HAIR, FORZA, BODY } from "../../lib/ui";
 
 /* One row per assignment — a candidate sitting two instruments appears twice. */
 interface Row {
@@ -21,6 +21,11 @@ interface Instrument { slug: string; name: string }
 /* Row actions report back here rather than inline, so the message survives the
    menu closing and the table re-rendering under it. */
 interface Toast { ok: boolean; text: string }
+/* Deletion is permanent, so it is always routed through a confirmation that
+   names what goes. "assignment" removes one row; "candidate" removes the
+   account and everything hanging off it. */
+type Scope = "assignment" | "candidate";
+interface Confirm { row: Row; scope: Scope }
 
 const STATUS: Record<string, { label: string; color: string }> = {
   invited: { label: "Invited", color: "#7A736B" },
@@ -46,6 +51,7 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const nameOf = (r: Row) => r.full_name ?? r.email;
+const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -65,6 +71,7 @@ export default function Candidates() {
   const [assignError, setAssignError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);   // row with an action in flight
   const [toast, setToast] = useState<Toast | null>(null);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("assignments")
@@ -193,6 +200,40 @@ export default function Candidates() {
     }
   }
 
+  /* Permanent. The dialog has already had the email typed back before this
+     runs, so there is nothing left to ask — it deletes, reloads, and reports
+     the counts the function actually removed rather than the ones the table
+     guessed at. */
+  async function remove({ row: r, scope }: Confirm) {
+    setWorking(r.id); setToast(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-delete-candidate", {
+        body: {
+          user_id: r.candidate_id, scope,
+          ...(scope === "assignment" ? { assignment_id: r.id } : {}),
+        },
+      });
+      const failure = await failureMessage(error, data);
+      if (failure) {
+        setToast({ ok: false, text: `Could not delete — ${failure}` });
+        return;
+      }
+      const d = (data as any)?.deleted ?? {};
+      const assignments = Number(d.assignments ?? 0), assessments = Number(d.assessments ?? 0);
+      await load();
+      setToast({ ok: true, text: scope === "assignment"
+        ? `Removed ${r.instrument_name} from ${nameOf(r)} — the assignment and ${plural(assessments, "assessment record")} deleted. Their account is untouched, and they can be invited to it again.`
+        : `Deleted ${nameOf(r)} (${r.email}) — their account, ${plural(assignments, "assignment")} and ${plural(assessments, "assessment record")} are gone.` });
+    } catch (e: any) {
+      setToast({ ok: false, text: `Could not delete — ${String(e?.message ?? e)}` });
+    } finally {
+      /* The dialog stays up for the round trip — the confirm button reads
+         "Deleting…" — and closes either way; a failure is reported by the
+         toast, which outlives it. */
+      setWorking(null); setConfirm(null);
+    }
+  }
+
   const th = (col: SortCol, label: string) => {
     const active = sortCol === col;
     return (
@@ -308,7 +349,8 @@ export default function Candidates() {
                             <RowMenu who={nameOf(r)} busy={busy} remaining={remaining}
                               onAssign={(slug) => assign(r, slug)}
                               onResend={() => resend(r)}
-                              onCopy={() => copySignIn(r)} />
+                              onCopy={() => copySignIn(r)}
+                              onDelete={(scope) => setConfirm({ row: r, scope })} />
                           </div>
                           <div className="cand-stack">
                             {remaining.map((i) => (
@@ -321,6 +363,10 @@ export default function Candidates() {
                             <button onClick={() => copySignIn(r)} className="font-label cand-stackbtn">
                               Copy sign-in link
                             </button>
+                            <button onClick={() => setConfirm({ row: r, scope: "assignment" })} disabled={busy}
+                              className="font-label cand-stackbtn cand-danger">Remove this assessment</button>
+                            <button onClick={() => setConfirm({ row: r, scope: "candidate" })} disabled={busy}
+                              className="font-label cand-stackbtn cand-danger">Delete candidate entirely</button>
                           </div>
                         </td>
                       </tr>
@@ -332,6 +378,12 @@ export default function Candidates() {
           </>
         )}
       </div>
+
+      {confirm && (
+        <ConfirmDelete key={`${confirm.row.id}:${confirm.scope}`} confirm={confirm} rows={rows}
+          busy={working === confirm.row.id}
+          onCancel={() => setConfirm(null)} onConfirm={() => remove(confirm)} />
+      )}
 
       {toast && (
         <div className="cand-toast" role={toast.ok ? "status" : "alert"} aria-live="polite"
@@ -402,6 +454,31 @@ export default function Candidates() {
         .cand-mi-back{color:${MUTED};font-size:12px}
         .cand-mi-note{margin:0;padding:6px 14px;font-family:Archivo,ui-sans-serif,system-ui,sans-serif;
           font-weight:500;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED}}
+        .cand-mi-rule{height:1px;background:${HAIR};margin:4px 0}
+        .cand-mi-danger{color:${FORZA}}
+        .cand-danger{color:${FORZA};border-color:${FORZA}}
+
+        /* Confirmation. Modal on purpose: nothing here is undoable, so the
+           table underneath is out of reach until the dialog is answered. */
+        .cand-scrim{position:fixed;inset:0;z-index:80;display:flex;align-items:center;
+          justify-content:center;padding:16px;background:rgba(42,37,31,.42)}
+        .cand-dlg{width:100%;max-width:520px;max-height:calc(100vh - 32px);overflow-y:auto;
+          background:#fff;border:1px solid ${HAIR};border-top:3px solid ${FORZA};padding:22px 22px 20px;
+          box-shadow:0 18px 44px rgba(42,37,31,.24);
+          font-family:Archivo,ui-sans-serif,system-ui,sans-serif}
+        .cand-dlg-h{margin:0 0 12px;font-size:1.25rem;color:${INK}}
+        .cand-dlg p{margin:0 0 12px;font-size:14px;line-height:1.6;color:${BODY}}
+        .cand-dlg-list{margin:0 0 12px;padding-left:20px;font-size:14px;line-height:1.6;color:${BODY}}
+        .cand-dlg-warn{color:${FORZA};font-weight:500}
+        .cand-dlg-lbl{display:block;margin-bottom:6px;font-size:11px;letter-spacing:.07em;
+          text-transform:uppercase;color:${MUTED}}
+        .cand-dlg-in{width:100%;padding:11px 12px;border:1px solid ${HAIR};background:#fff;box-sizing:border-box;
+          font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:${INK}}
+        .cand-dlg-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+        .cand-dlg-btn{padding:10px 16px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+          background:none;color:${INK};border:1px solid ${HAIR};cursor:pointer}
+        .cand-dlg-go{background:${FORZA};color:#fff;border-color:${FORZA}}
+        .cand-dlg-go:disabled{opacity:.45;cursor:not-allowed}
 
         .cand-toast{position:fixed;left:16px;right:16px;bottom:16px;z-index:70;display:flex;
           align-items:flex-start;gap:12px;background:#fff;border:1px solid ${HAIR};border-left-width:3px;
@@ -458,13 +535,14 @@ export default function Candidates() {
    belongs to any row. */
 const MENU_W = 260;
 
-function RowMenu({ who, busy, remaining, onAssign, onResend, onCopy }: {
+function RowMenu({ who, busy, remaining, onAssign, onResend, onCopy, onDelete }: {
   who: string;
   busy: boolean;
   remaining: Instrument[];
   onAssign: (slug: string) => void;
   onResend: () => void;
   onCopy: () => void;
+  onDelete: (scope: Scope) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<"root" | "assign">("root");
@@ -551,6 +629,13 @@ function RowMenu({ who, busy, remaining, onAssign, onResend, onCopy }: {
               )}
               <button role="menuitem" className="cand-mi" onClick={() => run(onResend)}>Resend link</button>
               <button role="menuitem" className="cand-mi" onClick={() => run(onCopy)}>Copy sign-in link</button>
+              {/* Ruled off and coloured: the two below destroy data, and nothing
+                  above them does. Both open a confirmation before anything goes. */}
+              <div className="cand-mi-rule" role="separator" />
+              <button role="menuitem" className="cand-mi cand-mi-danger"
+                onClick={() => run(() => onDelete("assignment"))}>Remove this assessment</button>
+              <button role="menuitem" className="cand-mi cand-mi-danger"
+                onClick={() => run(() => onDelete("candidate"))}>Delete candidate entirely</button>
             </>
           ) : (
             <>
@@ -568,5 +653,102 @@ function RowMenu({ who, busy, remaining, onAssign, onResend, onCopy }: {
         </div>
       )}
     </>
+  );
+}
+
+/* The confirmation.
+
+   Deletion is permanent — there is no archive flag to unset and no soft-delete
+   row to resurrect — so the dialog spends its space on what specifically goes,
+   counted from the table rather than described in the abstract. The email has
+   to be typed back before the confirm button works: it is the one field that
+   distinguishes two candidates with the same name, and typing it is a
+   deliberate act in a way that clicking through a dialog is not. */
+function ConfirmDelete({ confirm, rows, busy, onCancel, onConfirm }: {
+  confirm: Confirm;
+  rows: Row[];
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { row, scope } = confirm;
+  const [typed, setTyped] = useState("");
+  const input = useRef<HTMLInputElement | null>(null);
+  const matched = typed.trim().toLowerCase() === row.email.toLowerCase();
+
+  useEffect(() => { input.current?.focus(); }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) { e.stopPropagation(); onCancel(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [busy, onCancel]);
+
+  /* Every assignment this candidate holds, and how many of them have been
+     sat through to the end — the completed ones are the rows carrying answers
+     and a result, and the only ones that cannot be reproduced by re-inviting. */
+  const mine = rows.filter((r) => r.candidate_id === row.candidate_id);
+  const done = mine.filter((r) => r.status === "completed");
+  const title = scope === "assignment" ? "Remove this assessment" : "Delete candidate entirely";
+
+  return (
+    <div className="cand-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onCancel(); }}>
+      <div className="cand-dlg" role="dialog" aria-modal="true" aria-labelledby="cand-dlg-h">
+        <h2 id="cand-dlg-h" className="font-display cand-dlg-h">{title}</h2>
+
+        {scope === "assignment" ? (
+          <>
+            <p>
+              This deletes {nameOf(row)}'s <strong>{row.instrument_name}</strong> assignment,
+              invited {fmtDate(row.invited_at)}, and everything recorded against it
+              {row.status === "completed"
+                ? ` — the completed assessment of ${fmtDate(row.completed_at ?? row.invited_at)}, with its answers and its result.`
+                : row.status === "in_progress"
+                  ? " — including the answers given so far."
+                  : ", which so far is nothing: the assessment has not been started."}
+            </p>
+            <p className="cand-dlg-warn">This cannot be undone.</p>
+            <p>
+              {nameOf(row)} keeps their account and their other assignments, and can be
+              invited to {row.instrument_name} again. That creates a fresh assignment with a
+              new invitation date — it does not bring this one back.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>
+              This deletes <strong>{nameOf(row)}</strong> and everything attached to their
+              account. Going with them:
+            </p>
+            <ul className="cand-dlg-list">
+              <li>their sign-in account — {row.email} — and any link already sent to it</li>
+              <li>{plural(mine.length, "assignment")}: {mine.map((r) => r.instrument_name).join(", ")}</li>
+              <li>
+                {done.length === 0
+                  ? "no completed assessments — nothing has been submitted yet"
+                  : `${plural(done.length, "completed assessment")}, with the answers and results behind ${done.length === 1 ? "it" : "them"}`}
+              </li>
+            </ul>
+            <p className="cand-dlg-warn">
+              This cannot be undone. There is no archive — the reports are gone with the answers,
+              and re-inviting this address creates a new candidate starting from nothing.
+            </p>
+          </>
+        )}
+
+        <label className="cand-dlg-lbl" htmlFor="cand-dlg-in">
+          Type {row.email} to confirm
+        </label>
+        <input id="cand-dlg-in" ref={input} className="cand-dlg-in" value={typed}
+          onChange={(e) => setTyped(e.target.value)} autoComplete="off" spellCheck={false}
+          placeholder={row.email} aria-describedby="cand-dlg-h" />
+
+        <div className="cand-dlg-actions">
+          <button className="font-label cand-dlg-btn" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button className="font-label cand-dlg-btn cand-dlg-go" onClick={onConfirm} disabled={!matched || busy}>
+            {busy ? "Deleting…" : scope === "assignment" ? "Delete assignment" : "Delete candidate"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
