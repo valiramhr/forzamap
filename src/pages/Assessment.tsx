@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../auth/AuthProvider";
 import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
 import { findAssignment, STRENGTHS_SLUG } from "../lib/assignments";
 import {
-  buildItems, score, DOMAINS, TIME_LIMIT,
+  buildItems, score, TIME_LIMIT,
   type Item, type Answers,
 } from "../lib/instrument";
 
@@ -136,15 +136,13 @@ export default function Assessment() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, items, phase]);
 
-  const domainEntries = useMemo(() => Object.entries(DOMAINS), []);
-
   if (phase === "unassigned") return <Shell><Unassigned /></Shell>;
   if (!items) return <Shell><Center>Preparing your assessment…</Center></Shell>;
   if (submitting) return <Shell><Center>Scoring your responses…</Center></Shell>;
   if (phase === "intro") {
     return (
       <Shell>
-        <Intro total={total} domains={domainEntries} busy={starting} failed={startError} onBegin={begin} />
+        <Intro total={total} busy={starting} failed={startError} onBegin={begin} />
       </Shell>
     );
   }
@@ -272,9 +270,8 @@ function Sample() {
   );
 }
 
-function Intro({ total, domains, busy, failed, onBegin }: {
+function Intro({ total, busy, failed, onBegin }: {
   total: number;
-  domains: [string, { label: string; color: string; note: string }][];
   busy: boolean;
   failed: boolean;
   onBegin: () => void;
@@ -296,16 +293,6 @@ function Intro({ total, domains, busy, failed, onBegin }: {
       </ul>
 
       <Sample />
-
-      <h2 className="font-label intro-sub">What it measures</h2>
-      <div className="intro-domains">
-        {domains.map(([key, d]) => (
-          <div key={key} className="intro-domain" style={{ borderTop: `3px solid ${d.color}` }}>
-            <div className="font-label intro-domain-label" style={{ color: d.color }}>{d.label}</div>
-            <div className="intro-domain-note">{d.note}</div>
-          </div>
-        ))}
-      </div>
 
       <button onClick={onBegin} disabled={busy} className="font-label intro-begin">
         {busy ? "Starting…" : failed ? "Try again" : "Begin"}
@@ -388,13 +375,6 @@ function Shell({ children }: { children: React.ReactNode }) {
         .intro-list{list-style:none;padding:0;margin:0 0 32px;color:${BODY};line-height:1.6;max-width:36em}
         .intro-list li{padding:10px 0;border-bottom:1px solid ${HAIR}}
         .intro-list strong{color:${INK};font-weight:600}
-        .intro-sub{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};
-          margin:32px 0 12px}
-        .intro-domains{display:grid;grid-template-columns:1fr;gap:10px}
-        .intro-domain{background:#fff;border:1px solid ${HAIR};padding:14px 16px}
-        .intro-domain-label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
-          margin-bottom:4px}
-        .intro-domain-note{color:${BODY};font-size:14px;line-height:1.5}
         .intro-begin{width:100%;margin-top:32px;padding:14px;background:${INK};color:${PAPER};
           font-size:13px;letter-spacing:.07em;text-transform:uppercase;border:none;cursor:pointer}
         .intro-begin:disabled{opacity:.6;cursor:default}
@@ -429,7 +409,6 @@ function Shell({ children }: { children: React.ReactNode }) {
           .stmt{font-size:1.15rem}
           .intro{padding-top:64px}
           .intro-h1{font-size:2rem}
-          .intro-domains{grid-template-columns:1fr 1fr}
           .intro-begin{width:auto;padding:14px 32px}
           .sample{padding:24px}
           /* a little narrower than the live rating column, to leave the two
