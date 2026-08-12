@@ -1,12 +1,13 @@
 import ParadoxPanel from "./ParadoxPanel";
 import { PARADOX_ORDER, type Result, type Item, type Answers } from "../lib/paradox";
-import { PAPER, INK, MUTED, HAIR, FORZA } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, FORZA, fmtReportDate } from "../lib/ui";
 
 /* items and answers are optional: with them, a flagged panel can open the raw
    responses behind its two traits. Without them the panels render exactly as
-   they did before. */
-export default function ParadoxReport({ result, name, items, answers }: {
-  result: Result; name?: string | null; items?: Item[]; answers?: Answers;
+   they did before. completedAt is optional for the same reason — it lives on
+   the assignment, and the preview route has none. */
+export default function ParadoxReport({ result, name, items, answers, completedAt }: {
+  result: Result; name?: string | null; items?: Item[]; answers?: Answers; completedAt?: string | null;
 }) {
   const { zoneCounts, consistency, flaggedCount } = result;
   const byKey = new Map(result.paradoxes.map((p) => [p.key, p]));
@@ -19,8 +20,13 @@ export default function ParadoxReport({ result, name, items, answers }: {
     <div style={{ maxWidth: 1120, margin: "0 auto", padding: "40px 24px", fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif" }}>
       <img src="/brand/forzamap-lockup.svg" alt="ForzaMap" style={{ width: 160, height: "auto", display: "block", marginBottom: 20 }} />
 
+      {/* The candidate on a line of their own, at reading size in ink: a name
+          set in the label treatment reads as one more field of metadata. */}
+      {name && (
+        <p className="font-label" style={{ fontSize: "1.05rem", letterSpacing: "normal", color: INK, margin: "0 0 4px" }}>{name}</p>
+      )}
       <p className="font-label" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, margin: "0 0 8px" }}>
-        {name ? `${name} · ` : ""}Paradox Profile
+        Paradox Profile{completedAt ? ` · Completed ${fmtReportDate(completedAt)}` : ""}
       </p>
       <h1 className="font-display" style={{ fontSize: "2rem", color: INK, margin: "0 0 20px" }}>
         Twelve tensions, held or leaning.

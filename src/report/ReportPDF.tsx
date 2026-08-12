@@ -1,28 +1,34 @@
 import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
 import type { Result } from "../lib/instrument";
 import { DOMAINS } from "../lib/instrument";
-import { PAPER, INK, MUTED, HAIR, BODY, FORZA } from "../lib/ui";
+import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
 
 /* Archivo static TTFs from Google Fonts' font host — react-pdf can only parse TTF,
    not the woff2 the CSS API serves to modern browsers. If registration fails the
    document falls back to the built-in Helvetica and keeps the brand palette. */
 const ARCHIVO_400 = "https://fonts.gstatic.com/s/archivo/v25/k3k6o8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTTNDNp8A.ttf";
+const ARCHIVO_500 = "https://fonts.gstatic.com/s/archivo/v25/k3k6o8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTTBjNp8A.ttf";
 const ARCHIVO_800 = "https://fonts.gstatic.com/s/archivo/v25/k3k6o8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTTtDRp8A.ttf";
 
 let BASE = "Helvetica";
 let DISPLAY = "Helvetica-Bold";
 let DISPLAY_WEIGHT: 400 | 800 = 400;
+/* Helvetica has no medium, so on the fallback path the candidate's name simply
+   renders at the regular weight rather than failing to resolve. */
+let MEDIUM_WEIGHT: 400 | 500 = 400;
 try {
   Font.register({
     family: "Archivo",
     fonts: [
       { src: ARCHIVO_400, fontWeight: 400 },
+      { src: ARCHIVO_500, fontWeight: 500 },
       { src: ARCHIVO_800, fontWeight: 800 },
     ],
   });
   BASE = "Archivo";
   DISPLAY = "Archivo";
   DISPLAY_WEIGHT = 800;
+  MEDIUM_WEIGHT = 500;
 } catch (e) {
   console.warn("Archivo registration failed — PDF falls back to Helvetica.", e);
 }
@@ -33,12 +39,26 @@ const display = { fontFamily: DISPLAY, fontWeight: DISPLAY_WEIGHT };
 
 /* Font.register is global and one-shot, so other documents import the resolved
    families from here rather than registering Archivo a second time. */
-export const PDF_FONTS = { base: BASE, display: DISPLAY, displayWeight: DISPLAY_WEIGHT };
+export const PDF_FONTS = {
+  base: BASE, display: DISPLAY, displayWeight: DISPLAY_WEIGHT, mediumWeight: MEDIUM_WEIGHT,
+};
 
 const s = StyleSheet.create({
   page: { padding: 48, backgroundColor: PAPER, fontSize: 11, color: INK, fontFamily: BASE },
-  eyebrow: { fontSize: 9, letterSpacing: 2, color: MUTED, textTransform: "uppercase", marginBottom: 8 },
-  h1: { ...display, fontSize: 22, letterSpacing: -0.77, marginBottom: 8 },
+  /* The candidate reads as a person, not a field: Archivo medium at the body
+     size, in ink, on a line of its own. */
+  name: { fontFamily: BASE, fontWeight: MEDIUM_WEIGHT, fontSize: 12, marginBottom: 6 },
+  /* Instrument and completion date ride the headline's own line rather than
+     taking a third line of their own — the tallest report this bank can produce
+     clears the bottom of the text column by only ~9pt. Stacked rather than run
+     together on one line because the two together (350pt) would not sit beside
+     the headline; stacked they are 201pt at their widest against a headline of
+     at most 265pt, inside the 499pt column, so neither can ever wrap. Two 9pt
+     lines are shorter than the 22pt headline, so the row costs nothing. */
+  headRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 8 },
+  h1: { ...display, fontSize: 22, letterSpacing: -0.77 },
+  headMeta: { alignItems: "flex-end", paddingBottom: 3 },
+  eyebrow: { fontSize: 9, letterSpacing: 2, color: MUTED, textTransform: "uppercase" },
   intro: { color: BODY, lineHeight: 1.5, marginBottom: 14 },
   strip: { flexDirection: "row", height: 12, marginBottom: 6 },
   legendRow: { flexDirection: "row", flexWrap: "wrap", marginBottom: 18 },
@@ -66,15 +86,23 @@ const s = StyleSheet.create({
   foot: { position: "absolute", bottom: 28, left: 48, right: 48, fontSize: 8, color: MUTED },
 });
 
-export function ReportPDF({ result, name }: { result: Result; name?: string | null }) {
+export function ReportPDF({ result, name, completedAt }: {
+  result: Result; name?: string | null; completedAt?: string | null;
+}) {
   const { themeScores, domainShare, top, quality } = result;
   const lead = domainShare[0];
   const half = Math.ceil(themeScores.length / 2);
   return (
     <Document>
       <Page size="A4" style={s.page}>
-        <Text style={s.eyebrow}>{name ? `${name} — ` : ""}ForzaMap strengths profile</Text>
-        <Text style={s.h1}>You lead with {top[0].name}.</Text>
+        {name ? <Text style={s.name}>{name}</Text> : null}
+        <View style={s.headRow}>
+          <Text style={s.h1}>You lead with {top[0].name}.</Text>
+          <View style={s.headMeta}>
+            <Text style={s.eyebrow}>ForzaMap strengths profile</Text>
+            {completedAt ? <Text style={s.eyebrow}>Completed {fmtReportDate(completedAt)}</Text> : null}
+          </View>
+        </View>
         <Text style={s.intro}>Energy leans most toward {lead.label} — {lead.note.toLowerCase()}.</Text>
 
         <View style={s.strip}>

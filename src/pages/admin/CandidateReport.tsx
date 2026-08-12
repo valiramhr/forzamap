@@ -26,16 +26,20 @@ export default function CandidateReport() {
   const [answers, setAnswers] = useState<unknown>(null);
   const [name, setName] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
+  /* Set by the submit trigger on the assignment, not carried on the assessment
+     row, so it is read here and handed to the report. */
+  const [completedAt, setCompletedAt] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "none">("loading");
 
   useEffect(() => {
     (async () => {
       const { data: assignment } = await supabase.from("assignments")
-        .select("id,candidate:candidates(full_name,email),instrument:instruments(slug,name)")
+        .select("id,completed_at,candidate:candidates(full_name,email),instrument:instruments(slug,name)")
         .eq("id", id).maybeSingle();
       const cand = one(assignment?.candidate), inst = one(assignment?.instrument);
       setName(cand.full_name ?? cand.email ?? null);
       setSlug(inst.slug ?? null);
+      setCompletedAt(assignment?.completed_at ?? null);
 
       const { data } = await supabase.from("assessments")
         .select("result, items, answers").eq("assignment_id", id).eq("status", "submitted")
@@ -74,8 +78,8 @@ export default function CandidateReport() {
         {ready && (
           <PDFDownloadLink
             document={isParadox
-              ? <ParadoxReportPDF result={result as ParadoxResult} name={name} />
-              : <ReportPDF result={result as StrengthsResult} name={name} />}
+              ? <ParadoxReportPDF result={result as ParadoxResult} name={name} completedAt={completedAt} />
+              : <ReportPDF result={result as StrengthsResult} name={name} completedAt={completedAt} />}
             fileName={fileName}
             className="font-label" style={{ marginLeft: "auto", padding: "10px 16px", background: INK, color: PAPER, fontSize: 12, letterSpacing: ".07em", textTransform: "uppercase", textDecoration: "none" }}>
             {({ loading }: { loading: boolean }) => (loading ? "Preparing PDF…" : "Download PDF")}
@@ -85,10 +89,10 @@ export default function CandidateReport() {
       {state === "loading" && <Center>Loading…</Center>}
       {state === "none" && <Center>This candidate hasn't completed the assessment yet.</Center>}
       {ready && (isParadox
-        ? <ParadoxReport result={result as ParadoxResult} name={name}
+        ? <ParadoxReport result={result as ParadoxResult} name={name} completedAt={completedAt}
             items={(items as ParadoxItem[] | null) ?? undefined}
             answers={(answers as ParadoxAnswers | null) ?? undefined} />
-        : <ReportView result={result as StrengthsResult} name={name} />)}
+        : <ReportView result={result as StrengthsResult} name={name} completedAt={completedAt} />)}
     </div>
   );
 }
