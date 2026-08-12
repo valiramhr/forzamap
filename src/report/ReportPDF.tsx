@@ -1,6 +1,6 @@
 import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
-import type { Result } from "../lib/instrument";
-import { DOMAINS } from "../lib/instrument";
+import type { DomainKey, Result, ThemeKey } from "../lib/instrument";
+import { DOMAINS, THEMES } from "../lib/instrument";
 import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
 
 /* Archivo static TTFs from Google Fonts' font host — react-pdf can only parse TTF,
@@ -43,6 +43,14 @@ export const PDF_FONTS = {
   base: BASE, display: DISPLAY, displayWeight: DISPLAY_WEIGHT, mediumWeight: MEDIUM_WEIGHT,
 };
 
+/* Section label role, shared by the section headings on both pages. Split out
+   so the tight variant — a heading with an explanatory line under it — cannot
+   drift from the plain one. */
+const H3 = {
+  fontSize: 9, letterSpacing: 2, color: MUTED,
+  textTransform: "uppercase" as const, marginBottom: 8, marginTop: 6,
+};
+
 const s = StyleSheet.create({
   page: { padding: 48, backgroundColor: PAPER, fontSize: 11, color: INK, fontFamily: BASE },
   /* The candidate reads as a person, not a field: Archivo medium at the body
@@ -64,11 +72,20 @@ const s = StyleSheet.create({
   legendRow: { flexDirection: "row", flexWrap: "wrap", marginBottom: 18 },
   legend: { fontSize: 9, color: MUTED, marginRight: 14, flexDirection: "row", alignItems: "center" },
   dot: { width: 6, height: 6, borderRadius: 3, marginRight: 4 },
-  h3: { fontSize: 9, letterSpacing: 2, color: MUTED, textTransform: "uppercase", marginBottom: 8, marginTop: 6 },
+  h3: H3,
+  h3Tight: { ...H3, marginBottom: 3 },
   sig: { flexDirection: "row", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: HAIR },
   sigNum: { ...display, fontSize: 18, letterSpacing: -0.63, width: 24 },
   sigName: { ...display, fontSize: 13, letterSpacing: -0.46, marginBottom: 3 },
   sigDesc: { fontSize: 10, color: BODY, lineHeight: 1.4 },
+  /* The bottom five carry a rank and a name and nothing else: no bar, no
+     description, no domain colour. Anything more would read as a verdict, and
+     the note above them exists precisely to say it is not one. */
+  note: { fontSize: 8.5, color: MUTED, lineHeight: 1.4, marginBottom: 9 },
+  leastRow: { flexDirection: "row", flexWrap: "wrap" },
+  least: { width: "20%", flexDirection: "row", alignItems: "baseline" },
+  leastNum: { width: 15, fontSize: 9, color: MUTED },
+  leastName: { fontSize: 10, color: BODY },
   /* Twenty themes in one column overflow A4 — they run as two columns of ten,
      which keeps the ranking on the page at the same type sizes as the rest. */
   rankCols: { flexDirection: "row" },
@@ -79,6 +96,37 @@ const s = StyleSheet.create({
   rankName: { width: 80, fontSize: 10 },
   rankVal: { width: 18, fontSize: 9, color: MUTED, textAlign: "right" },
   bar: { flex: 1, height: 6, backgroundColor: HAIR, marginHorizontal: 8 },
+  /* Page 2 is designed to survive being detached from page 1, so it re-states
+     who it belongs to in a rule-underlined running head rather than relying on
+     the reader still holding page 1. */
+  runHead: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end",
+    borderBottomWidth: 1, borderBottomColor: HAIR, paddingBottom: 5, marginBottom: 10,
+  },
+  runName: { fontFamily: BASE, fontWeight: MEDIUM_WEIGHT, fontSize: 9.5, color: BODY },
+  runMeta: { fontSize: 7.5, letterSpacing: 1.2, color: MUTED, textTransform: "uppercase" },
+
+  /* All twenty descriptions plus the ranking do not fit one A4 column, so the
+     reference runs as two columns of two domains — a split on domain boundaries
+     rather than a flowed one, which keeps each domain's five themes together
+     under their own heading. */
+  refCols: { flexDirection: "row" },
+  refCol: { flex: 1 },
+  refColGutter: { marginRight: 22 },
+  refDomain: { fontSize: 8.5, letterSpacing: 1.6, textTransform: "uppercase", marginTop: 9, marginBottom: 4 },
+  /* flex-start, so the gutter keeps the height of one line instead of
+     stretching to the entry's — stretched, its mark centres itself against a
+     three-line description and floats away from the name it belongs to. */
+  refRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 4.5 },
+  /* Fixed-width gutter on every row, marked or not, so all twenty descriptions
+     share one left edge and the five that are marked stand out of it. The
+     height is refText's line box, which centres the mark on the first line. */
+  refMark: { width: 15, height: 9 * 1.4, flexDirection: "row", alignItems: "center" },
+  refDot: { width: 4, height: 4, borderRadius: 2, marginRight: 2.5 },
+  refRank: { fontSize: 7.5 },
+  refText: { flex: 1, fontSize: 9, color: BODY, lineHeight: 1.4 },
+  refName: { ...display, color: INK, letterSpacing: -0.32 },
+
   cons: { borderWidth: 1, borderColor: HAIR, padding: 12, marginTop: 10 },
   consHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   consValue: { ...display, letterSpacing: -0.39 },
@@ -86,12 +134,38 @@ const s = StyleSheet.create({
   foot: { position: "absolute", bottom: 28, left: 48, right: 48, fontSize: 8, color: MUTED },
 });
 
+/* The disclaimer belongs on any page that can be read on its own, and `fixed`
+   is what keeps it out of the height accounting on each. */
+function Foot() {
+  return (
+    <Text style={s.foot} fixed>
+      Ipsative (intra-individual) profile for development use. Scores are relative within this
+      person and are not comparable across people. Not affiliated with Gallup CliftonStrengths.
+    </Text>
+  );
+}
+
+/* Domains in instrument order, split two and two across the reference columns;
+   themes within a domain likewise stay in the order instrument.ts declares
+   them rather than in this person's rank order. */
+const DOMAIN_KEYS = Object.keys(DOMAINS) as DomainKey[];
+const REF_COLS = [DOMAIN_KEYS.slice(0, 2), DOMAIN_KEYS.slice(2)];
+const THEMES_BY_DOMAIN = DOMAIN_KEYS.reduce((acc, d) => {
+  acc[d] = (Object.keys(THEMES) as ThemeKey[]).filter((k) => THEMES[k].domain === d);
+  return acc;
+}, {} as Record<DomainKey, ThemeKey[]>);
+
 export function ReportPDF({ result, name, completedAt }: {
   result: Result; name?: string | null; completedAt?: string | null;
 }) {
   const { themeScores, domainShare, top, quality } = result;
   const lead = domainShare[0];
   const half = Math.ceil(themeScores.length / 2);
+  const bottom = themeScores.slice(-5);
+  const firstBottomRank = themeScores.length - 5;
+  /* Rank by theme, so the reference can mark the top five where they fall
+     among their own domain rather than re-sorting them. */
+  const rankOf = new Map<ThemeKey, number>(themeScores.map((t, i) => [t.key, i]));
   return (
     <Document>
       <Page size="A4" style={s.page}>
@@ -128,6 +202,46 @@ export function ReportPDF({ result, name, completedAt }: {
           </View>
         ))}
 
+        <Text style={s.h3Tight}>Least called upon</Text>
+        <Text style={s.note}>
+          These rank lowest within this person's own profile. A low rank means the theme is less
+          central to how they work, not that they lack the capability.
+        </Text>
+        <View style={s.leastRow}>
+          {bottom.map((t, i) => (
+            <View key={t.key} style={s.least}>
+              <Text style={s.leastNum}>{firstBottomRank + i + 1}</Text>
+              <Text style={s.leastName}>{t.name}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* A High rating stands alone; anything lower carries the signals that
+            pulled it down, so the reader knows what to check in the responses. */}
+        <View style={s.cons}>
+          <View style={s.consHead}>
+            <Text style={{ color: MUTED }}>RESPONSE QUALITY</Text>
+            <Text style={[s.consValue, { color: quality.rating === "Low" ? FORZA : INK }]}>{quality.rating}</Text>
+          </View>
+          {quality.rating !== "High" && quality.reasons.map((r, i) => (
+            <Text key={i} style={s.consReason}>— {r}</Text>
+          ))}
+        </View>
+
+        {/* Page furniture, not flow content — `fixed` keeps it out of the height
+            accounting, which otherwise pushes it onto a page of its own when the
+            report runs long. */}
+        <Foot />
+      </Page>
+
+      <Page size="A4" style={s.page}>
+        <View style={s.runHead}>
+          <Text style={s.runName}>{name || "Strengths profile"}</Text>
+          <Text style={s.runMeta}>
+            ForzaMap strengths profile{completedAt ? ` · ${fmtReportDate(completedAt)}` : ""}
+          </Text>
+        </View>
+
         <Text style={s.h3}>Full ranking</Text>
         <View style={s.rankCols}>
           {[0, 1].map((c) => (
@@ -149,25 +263,43 @@ export function ReportPDF({ result, name, completedAt }: {
           ))}
         </View>
 
-        {/* A High rating stands alone; anything lower carries the signals that
-            pulled it down, so the reader knows what to check in the responses. */}
-        <View style={s.cons}>
-          <View style={s.consHead}>
-            <Text style={{ color: MUTED }}>RESPONSE QUALITY</Text>
-            <Text style={[s.consValue, { color: quality.rating === "Low" ? FORZA : INK }]}>{quality.rating}</Text>
-          </View>
-          {quality.rating !== "High" && quality.reasons.map((r, i) => (
-            <Text key={i} style={s.consReason}>— {r}</Text>
+        <Text style={s.h3Tight}>All twenty themes</Text>
+        <Text style={s.note}>
+          Every theme the instrument measures, in its own domain. The five this person leads with
+          are marked with their rank.
+        </Text>
+        <View style={s.refCols}>
+          {REF_COLS.map((domains, c) => (
+            <View key={c} style={c === 0 ? [s.refCol, s.refColGutter] : s.refCol}>
+              {domains.map((d) => (
+                <View key={d}>
+                  <Text style={[s.refDomain, { color: DOMAINS[d].color }]}>{DOMAINS[d].label}</Text>
+                  {THEMES_BY_DOMAIN[d].map((k) => {
+                    const rank = rankOf.get(k);
+                    const isTop = rank != null && rank < top.length;
+                    return (
+                      <View key={k} style={s.refRow}>
+                        <View style={s.refMark}>
+                          {isTop ? (
+                            <>
+                              <View style={[s.refDot, { backgroundColor: DOMAINS[d].color }]} />
+                              <Text style={[s.refRank, { color: DOMAINS[d].color }]}>{rank + 1}</Text>
+                            </>
+                          ) : null}
+                        </View>
+                        <Text style={s.refText}>
+                          <Text style={s.refName}>{THEMES[k].name}</Text> — {THEMES[k].desc}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
           ))}
         </View>
 
-        {/* Page furniture, not flow content — `fixed` keeps it out of the height
-            accounting, which otherwise pushes it onto a page of its own when the
-            report runs long. */}
-        <Text style={s.foot} fixed>
-          Ipsative (intra-individual) profile for development use. Scores are relative within this
-          person and are not comparable across people. Not affiliated with Gallup CliftonStrengths.
-        </Text>
+        <Foot />
       </Page>
     </Document>
   );
