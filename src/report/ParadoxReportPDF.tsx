@@ -20,7 +20,7 @@ const HEADER = 21 * MM;
 const CONTENT_W = 180 * MM;
 const PLOT_INSET = (PANEL - PLOT) / 2;
 
-const { base: BASE, display: DISPLAY, displayWeight: DISPLAY_WEIGHT } = PDF_FONTS;
+const { base: BASE, display: DISPLAY, displayWeight: DISPLAY_WEIGHT, mediumWeight: MEDIUM_WEIGHT } = PDF_FONTS;
 const display = { fontFamily: DISPLAY, fontWeight: DISPLAY_WEIGHT };
 const label = { fontFamily: BASE, fontWeight: 400 as const, textTransform: "uppercase" as const };
 /* The web panel tints with FORZA at 10% alpha; react-pdf's colour parser is
@@ -41,7 +41,12 @@ const s = StyleSheet.create({
   lockup: { width: 24 * MM, height: 10.8 * MM, marginBottom: 3 },
   h1: { ...display, fontSize: 14, letterSpacing: -0.49 },
   metaCol: { alignItems: "flex-end" },
-  nameTxt: { ...display, fontSize: 10, letterSpacing: -0.35, marginBottom: 3 },
+  /* The candidate reads as a person, not a field: Archivo medium in ink, above
+     the instrument's own headline in weight but well under it in size. The
+     report is titled on the left of this same header, so the label line beneath
+     the name carries the completion date alone rather than repeating it. */
+  nameTxt: { fontFamily: BASE, fontWeight: MEDIUM_WEIGHT, fontSize: 11, marginBottom: 3 },
+  metaLabel: { ...label, fontSize: 7, letterSpacing: 0.5, color: MUTED, marginBottom: 2 },
   meta: { fontSize: 7, color: MUTED, marginBottom: 2 },
 
   grid: { width: CONTENT_W, flexDirection: "row", flexWrap: "wrap" },
@@ -252,7 +257,6 @@ export function ParadoxReportPDF({ result, name, completedAt }: {
   result: Result; name?: string | null; completedAt?: string | null;
 }) {
   const byKey = new Map(result.paradoxes.map((p) => [p.key, p]));
-  const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
   /* Pairs, not result.flaggedCount — that one counts traits. */
   const flaggedPairs = result.paradoxes.filter((p) => p.flagged).length;
 
@@ -267,10 +271,7 @@ export function ParadoxReportPDF({ result, name, completedAt }: {
             </View>
             <View style={s.metaCol}>
               {name ? <Text style={s.nameTxt}>{name}</Text> : null}
-              {/* Labelled, because the line below it is the date the report was
-                  drawn and the two would otherwise be indistinguishable. */}
-              {completedAt ? <Text style={s.meta}>Completed {fmtReportDate(completedAt)}</Text> : null}
-              <Text style={s.meta}>{date}</Text>
+              {completedAt ? <Text style={s.metaLabel}>Completed {fmtReportDate(completedAt)}</Text> : null}
               <Text style={[s.meta, result.consistency === "Low" ? { color: FORZA } : {}]}>
                 Consistency {result.consistency}
                 {flaggedPairs > 0 ? ` · ${flaggedPairs} flagged ${flaggedPairs === 1 ? "pair" : "pairs"}` : ""}

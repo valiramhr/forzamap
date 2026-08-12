@@ -20,8 +20,13 @@ export default function ParadoxReport({ result, name, items, answers, completedA
     <div style={{ maxWidth: 1120, margin: "0 auto", padding: "40px 24px", fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif" }}>
       <img src="/brand/forzamap-lockup.svg" alt="ForzaMap" style={{ width: 160, height: "auto", display: "block", marginBottom: 20 }} />
 
+      {/* The candidate on a line of their own, at reading size in ink: a name
+          set in the label treatment reads as one more field of metadata. */}
+      {name && (
+        <p className="font-label" style={{ fontSize: "1.05rem", letterSpacing: "normal", color: INK, margin: "0 0 4px" }}>{name}</p>
+      )}
       <p className="font-label" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, margin: "0 0 8px" }}>
-        {name ? `${name} · ` : ""}Paradox Profile{completedAt ? ` · Completed ${fmtReportDate(completedAt)}` : ""}
+        Paradox Profile{completedAt ? ` · Completed ${fmtReportDate(completedAt)}` : ""}
       </p>
       <h1 className="font-display" style={{ fontSize: "2rem", color: INK, margin: "0 0 20px" }}>
         Twelve tensions, held or leaning.

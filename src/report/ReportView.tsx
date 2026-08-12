@@ -14,8 +14,13 @@ export default function ReportView({ result, name, completedAt }: {
       {/* Lockup at 160px — above the 88px brand minimum. Clear space below equals
           the cap height of the F (≈25% of lockup height). */}
       <img src="/brand/forzamap-lockup.svg" alt="ForzaMap" style={{ width: 160, height: "auto", display: "block", marginBottom: 20 }} />
-      <p className="font-label" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, marginBottom: 8 }}>
-        {name ? `${name} · ` : ""}Strengths profile{completedAt ? ` · Completed ${fmtReportDate(completedAt)}` : ""}
+      {/* The candidate on a line of their own, at reading size in ink: a name
+          set in the label treatment reads as one more field of metadata. */}
+      {name && (
+        <p className="font-label" style={{ fontSize: "1.05rem", letterSpacing: "normal", color: INK, margin: "0 0 4px" }}>{name}</p>
+      )}
+      <p className="font-label" style={{ fontSize: 12, letterSpacing: ".15em", textTransform: "uppercase", color: MUTED, margin: "0 0 8px" }}>
+        Strengths profile{completedAt ? ` · Completed ${fmtReportDate(completedAt)}` : ""}
       </p>
       <h1 className="font-display" style={{ fontSize: "2rem", color: INK, margin: "0 0 10px" }}>You lead with {top[0].name}.</h1>
       <p style={{ color: BODY, lineHeight: 1.6, marginBottom: 28 }}>
