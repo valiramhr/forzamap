@@ -14,6 +14,7 @@ export default function AdminNav() {
       <img src="/brand/forzamap-lockup.svg" alt="ForzaMap" style={{ width: 88, height: "auto", display: "block" }} />
       {link("/admin", "Invite")}
       {link("/admin/candidates", "Candidates")}
+      {link("/admin/team", "Team")}
       <button onClick={signOut} className="font-label" style={{ marginLeft: "auto", fontSize: 12, textTransform: "uppercase", letterSpacing: ".07em", color: MUTED, background: "none", border: "none", cursor: "pointer" }}>Sign out</button>
     </div>
   );
