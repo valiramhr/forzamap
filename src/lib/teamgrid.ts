@@ -29,8 +29,11 @@ export const SHORT: Record<DomainKey, string> = {
 
 /** A person's signature strengths — the same top five the report leads with. */
 export const TOP_N = 5;
-/** Ranks below this are left blank: past ten, the ordering is noise. */
+/** Ranks below this are left blank in the default depth: past ten, the
+    ordering is noise. */
 export const SHOWN_RANKS = 10;
+/** Where the bottom five begins — 16 of 20, the mirror of TOP_N. */
+export const BOTTOM_FROM = THEME_ORDER.length - TOP_N + 1;
 /** A theme this many people share is a concentration worth naming. */
 export const SHARED_AT = 3;
 
@@ -54,15 +57,95 @@ export function blend(hex: string, a: number, base = CARD): string {
   return "#" + [0, 1, 2].map((i) => mix(i).toString(16).padStart(2, "0")).join("");
 }
 
-/** How a rank reads in its theme's domain colour: the leading three carry the
-    colour solid, the next four a wash of it, the rest a hint. Past
-    SHOWN_RANKS a cell says nothing at all. */
-export function band(rank: number, color: string):
-  { background?: string; color?: string; strong: boolean } {
-  if (rank > SHOWN_RANKS) return { strong: false };
+/* ── how much of each ranking the grid shows ─────────────────────────────
+   One person's row is 20 ranks long and the grid has only ever drawn the
+   first ten of them. Two more readings are worth having: the whole ranking,
+   and the two ends of it with the middle dropped. The mode belongs here
+   rather than in the page, because the screen, the CSV and the PDF all have
+   to draw and export the same cells. */
+
+/** Which part of each person's ranking the grid draws. */
+export type DepthMode = "top10" | "all20" | "ends";
+
+export const DEPTH_DEFAULT: DepthMode = "top10";
+
+/** The modes as the control offers them, in the order it offers them. */
+export const DEPTH_MODES: { key: DepthMode; label: string; title: string }[] = [
+  { key: "top10", label: `Top ${SHOWN_RANKS}`,
+    title: `Ranks 1–${SHOWN_RANKS}; blank below` },
+  { key: "all20", label: `All ${THEME_ORDER.length}`,
+    title: "Every theme carries a rank" },
+  { key: "ends", label: `Top ${TOP_N} & bottom ${TOP_N}`,
+    title: `Ranks 1–${TOP_N} and ${BOTTOM_FROM}–${THEME_ORDER.length}; the middle blank` },
+];
+
+export const isDepthMode = (v: unknown): v is DepthMode =>
+  DEPTH_MODES.some((m) => m.key === v);
+
+/** Whether a rank is drawn at all under `mode`. */
+export function shows(rank: number, mode: DepthMode): boolean {
+  if (mode === "all20") return true;
+  if (mode === "ends") return rank <= TOP_N || rank >= BOTTOM_FROM;
+  return rank <= SHOWN_RANKS;
+}
+
+/** How one cell is drawn. `outline` is a rule around an UNFILLED cell — the
+    bottom five are a deliberate reading, not a faded one, so they are given a
+    different kind of cell rather than the palest step of the same gradient. */
+export interface RankBand {
+  background?: string;
+  color?: string;
+  strong: boolean;
+  outline?: string;
+}
+
+/** A numeral pale enough to sit on the faintest tint without shouting, but
+    still darker than the hairlines around it. */
+const FAINT = blend(MUTED, 0.62);
+
+/** How a rank reads in its theme's domain colour. The leading three carry the
+    colour solid everywhere; below that each mode has its own descent, because
+    twenty filled cells in a row need the lower bands to recede much harder
+    than ten do, and the bottom five are not a low band at all. */
+export function band(rank: number, color: string, mode: DepthMode = DEPTH_DEFAULT): RankBand {
+  if (!shows(rank, mode)) return { strong: false };
   if (rank <= 3) return { background: color, color: CARD, strong: true };
+  if (mode === "ends") {
+    return rank <= TOP_N
+      ? { background: blend(color, 0.45), color: INK, strong: false }
+      : { outline: color, color, strong: false };
+  }
   if (rank <= 7) return { background: blend(color, 0.45), color: INK, strong: false };
-  return { background: blend(color, 0.18), color: MUTED, strong: false };
+  if (mode === "top10" || rank <= 13) return { background: blend(color, 0.18), color: MUTED, strong: false };
+  return { background: blend(color, 0.07), color: FAINT, strong: false };
+}
+
+/** The legend's swatches for `mode`, drawn from `band` itself so the key can
+    never describe a banding the grid is not using. In ink rather than a domain
+    colour: the legend is about the steps, not about one domain. */
+export function legendKeys(mode: DepthMode): { label: string; band: RankBand }[] {
+  const key = (rank: number, label: string) => ({ label, band: band(rank, INK, mode) });
+  if (mode === "all20")
+    return [key(1, "1–3"), key(4, "4–7"), key(8, "8–13"), key(14, `14–${THEME_ORDER.length}`)];
+  if (mode === "ends")
+    return [key(1, "1–3"), key(4, `4–${TOP_N}`), key(BOTTOM_FROM, `${BOTTOM_FROM}–${THEME_ORDER.length}`)];
+  return [key(1, "1–3"), key(4, "4–7"), key(8, `8–${SHOWN_RANKS}`)];
+}
+
+/** What the legend says after the swatches. */
+export function depthNote(mode: DepthMode): string {
+  if (mode === "all20") return `Every one of the ${THEME_ORDER.length} themes carries a rank.`;
+  if (mode === "ends")
+    return `Ranks 1–${TOP_N} filled and ${BOTTOM_FROM}–${THEME_ORDER.length} outlined — ` +
+      "the two ends of one ranking, not a scale. Ranks in between are blank.";
+  return `Blank past ${SHOWN_RANKS}.`;
+}
+
+/** The same fact in the two lines the grid's top-left corner has room for. */
+export function depthHeadNote(mode: DepthMode): string {
+  if (mode === "all20") return `all ${THEME_ORDER.length} shown`;
+  if (mode === "ends") return `1–${TOP_N} and ${BOTTOM_FROM}–${THEME_ORDER.length} only`;
+  return `blank past ${SHOWN_RANKS}`;
 }
 
 export function emptyDomains(): Record<DomainKey, number> {

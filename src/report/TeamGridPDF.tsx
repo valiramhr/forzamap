@@ -1,11 +1,12 @@
 import { Document, Page, Text, View, StyleSheet, pdf } from "@react-pdf/renderer";
-import { PDF_FONTS } from "./ReportPDF";
+import { PDF_FONTS, NO_BREAK } from "./ReportPDF";
 import { DOMAINS, THEMES } from "../lib/instrument";
-import type { DomainKey, ThemeKey } from "../lib/instrument";
 import {
-  DOMAIN_ORDER, THEME_ORDER, GROUPS, SHORT, TOP_N, SHOWN_RANKS, SHARED_AT,
-  CARD, IPSATIVE_CAVEAT, band, blend, domainSlots, holderCounts, plural, share,
-  type TeamPerson,
+  DOMAIN_ORDER, THEME_ORDER, GROUPS, SHORT, TOP_N, SHARED_AT,
+  DEPTH_DEFAULT, CARD, IPSATIVE_CAVEAT,
+  band, blend, depthHeadNote, depthNote, domainSlots, holderCounts, legendKeys,
+  plural, share, shows,
+  type DepthMode, type TeamPerson,
 } from "../lib/teamgrid";
 import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
 
@@ -22,11 +23,20 @@ import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
    of the row, so the left-hand column repeats by construction.
 
    The "in top 5" footer totals the whole team, so it is the last thing in the
-   flow and lands on the last page — a per-page repeat would state a whole-team
-   count under a partial one.
+   flow and lands on the last page of the GRID — a per-page repeat would state
+   a whole-team count under a partial one.
+
+   A second Page follows the grid with all twenty theme descriptions. It is a
+   Page of its own rather than more flow, which is what makes it the last sheet
+   whatever the team size: react-pdf lays Pages out in order, so however many
+   sheets the rows take, the reference is the one after them. Being its own
+   Page is also what keeps the grid's `fixed` header off it — that header is
+   scoped to the Page it is declared in, and this page is reference text rather
+   than a continuation of the table.
 
    Everything the ranks mean, and cannot mean, is in lib/teamgrid.ts alongside
-   the screen's own reading of them. */
+   the screen's own reading of them — including how far down each row is drawn,
+   which the grid's depth control sets and this document follows. */
 
 const { base: BASE, display: DISPLAY, displayWeight: DISPLAY_WEIGHT, mediumWeight: MEDIUM_WEIGHT } = PDF_FONTS;
 const display = { fontFamily: DISPLAY, fontWeight: DISPLAY_WEIGHT };
@@ -114,6 +124,13 @@ const s = StyleSheet.create({
   nameT: { fontSize: 7, color: INK },
   cell: { width: THEME_W, alignItems: "center", justifyContent: "center", ...hair },
   sumCell: { width: SUM_W, alignItems: "center", justifyContent: "center", backgroundColor: CARD, ...hair },
+  /* The bottom-five treatment: a rule around an unfilled cell, drawn as a box
+     inside the cell rather than on the cell itself, so it cannot overwrite the
+     hairline that separates the columns or the rule between domain groups. */
+  outline: {
+    flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center",
+    borderWidth: 0.75,
+  },
   rank: { fontSize: 6.5 },
   rankStrong: { fontSize: 6.5, fontFamily: BASE, fontWeight: MEDIUM_WEIGHT },
   /* Domain groups keep the rule the screen draws between them; the summary
@@ -129,7 +146,27 @@ const s = StyleSheet.create({
 
   legend: { flexDirection: "row", alignItems: "center", marginTop: 7 },
   key: { width: 26, paddingVertical: 1.5, marginRight: 5, fontSize: 6, textAlign: "center" },
-  legendT: { fontSize: 6.5, color: MUTED },
+  legendT: { fontSize: 6.5, color: MUTED, flex: 1 },
+
+  /* ── the reference page ──────────────────────────────────────────────
+     Landscape A4 is 798pt of live width. One column of that is a ~150-character
+     measure — unreadable — so the twenty descriptions run as four columns, one
+     per domain, which lands the domain grouping and the column break on the
+     same lines and gives each column a ~40-character measure. */
+  refCols: { flexDirection: "row", marginTop: 8 },
+  refCol: { flex: 1 },
+  refColGutter: { marginRight: 18 },
+  refDomain: {
+    fontSize: 8.5, letterSpacing: 1.6, textTransform: "uppercase",
+    borderBottomWidth: 1, paddingBottom: 4, marginBottom: 8,
+  },
+  refItem: { marginBottom: 10 },
+  /* 10pt against a ~185pt column is a ~37-character measure — narrow, which is
+     what the hyphenation callback below is for, but a page of reference text
+     set at the grid's own 6.5pt would be unreadable. */
+  refText: { fontSize: 10, color: BODY, lineHeight: 1.5 },
+  refName: { ...display, fontSize: 10, color: INK, letterSpacing: -0.35 },
+  refNote: { fontSize: 8.5, lineHeight: 1.45, color: MUTED, marginBottom: 2 },
 
   pageFoot: {
     position: "absolute", bottom: 14, left: PAD_X, right: PAD_X,
@@ -143,9 +180,11 @@ export interface TeamGridPDFProps {
   people: TeamPerson[];
   /** ISO date the export was taken. */
   generatedAt: string;
+  /** How far down each ranking the screen is drawing; the document follows it. */
+  depth?: DepthMode;
 }
 
-export function TeamGridPDF({ people, generatedAt }: TeamGridPDFProps) {
+export function TeamGridPDF({ people, generatedAt, depth = DEPTH_DEFAULT }: TeamGridPDFProps) {
   const holders = holderCounts(people);
   const slots = domainSlots(people);
   const totalSlots = people.length * TOP_N;
@@ -265,7 +304,7 @@ export function TeamGridPDF({ people, generatedAt }: TeamGridPDFProps) {
           <View style={s.hrow}>
             <View style={{ ...s.corner, height: VHEAD_H, justifyContent: "flex-end", paddingBottom: 5 }}>
               <Text style={s.cornerS}>Rank within the person</Text>
-              <Text style={s.cornerS}>blank past {SHOWN_RANKS}</Text>
+              <Text style={s.cornerS}>{depthHeadNote(depth)}</Text>
             </View>
             {GROUPS.map(({ themes }) =>
               themes.map((t, i) => (
@@ -292,19 +331,23 @@ export function TeamGridPDF({ people, generatedAt }: TeamGridPDFProps) {
             </View>
             {GROUPS.map(({ domain, themes }) =>
               themes.map((t, i) => {
-                const b = band(p.rank[t], DOMAINS[domain].color);
+                const rank = p.rank[t];
+                const b = band(rank, DOMAINS[domain].color, depth);
                 const cell = {
                   ...s.cell,
                   ...(i === 0 ? s.dsep : null),
                   ...(b.background ? { backgroundColor: b.background } : null),
                 };
+                const numeral = (
+                  <Text style={b.strong ? { ...s.rankStrong, color: b.color } : { ...s.rank, color: b.color }}>
+                    {rank}
+                  </Text>
+                );
                 return (
                   <View key={t} style={cell}>
-                    {p.rank[t] <= SHOWN_RANKS && (
-                      <Text style={b.strong ? { ...s.rankStrong, color: b.color } : { ...s.rank, color: b.color }}>
-                        {p.rank[t]}
-                      </Text>
-                    )}
+                    {b.outline
+                      ? <View style={{ ...s.outline, borderColor: b.outline }}>{numeral}</View>
+                      : shows(rank, depth) && numeral}
                   </View>
                 );
               }))}
@@ -351,17 +394,75 @@ export function TeamGridPDF({ people, generatedAt }: TeamGridPDFProps) {
           ))}
         </View>
 
+        {/* Drawn from the same `band` the cells are, so the key cannot describe
+            a banding the document is not using. */}
         <View style={s.legend} wrap={false}>
-          <Text style={{ ...s.key, backgroundColor: INK, color: CARD }}>1–3</Text>
-          <Text style={{ ...s.key, backgroundColor: blend(INK, 0.45), color: INK }}>4–7</Text>
-          <Text style={{ ...s.key, backgroundColor: blend(INK, 0.18), color: MUTED }}>8–10</Text>
+          {legendKeys(depth).map(({ label, band: b }) => (
+            <Text key={label}
+              style={{
+                ...s.key,
+                ...(b.background ? { backgroundColor: b.background } : null),
+                ...(b.outline ? { borderWidth: 0.75, borderColor: b.outline } : null),
+                color: b.color,
+              }}>
+              {label}
+            </Text>
+          ))}
           <Text style={s.legendT}>
-            Rank within that person, in their theme's domain colour. Blank past {SHOWN_RANKS}.
+            Rank within that person, in their theme's domain colour. {depthNote(depth)}
           </Text>
         </View>
 
         {/* Page furniture, not flow content — `fixed` keeps it out of the height
             accounting, so it cannot push the last rows onto a page of their own. */}
+        <View style={s.pageFoot} fixed>
+          <Text style={s.pageFootT}>
+            Ipsative (intra-individual) profile for development use. Ranks are relative within
+            each person and are not comparable across people. Not affiliated with Gallup CliftonStrengths.
+          </Text>
+          <Text style={s.pageFootT} render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
+        </View>
+      </Page>
+
+      {/* ── the twenty themes, as reference ──────────────────────────────
+          The last sheet however many the rows took. Nobody reading a grid of
+          rank numerals is carrying twenty theme definitions in their head, and
+          the descriptions are the instrument's own words for them — verbatim
+          from lib/instrument.ts, the same text the individual report sets. */}
+      <Page size="A4" orientation="landscape" style={s.page}>
+        <View style={s.headRow}>
+          <Text style={s.h1}>The twenty themes</Text>
+          <View style={s.headMeta}>
+            <Text style={s.eyebrow}>ForzaMap strengths profile</Text>
+            <Text style={s.eyebrow}>Reference</Text>
+          </View>
+        </View>
+        <Text style={s.refNote}>
+          What each column of the grid means. Every person is ranked on all
+          {" "}{THEME_ORDER.length} of them, whichever ranks the grid is showing.
+        </Text>
+
+        <View style={s.refCols}>
+          {GROUPS.map(({ domain, themes }, c) => (
+            <View key={domain}
+              style={c === GROUPS.length - 1 ? s.refCol : { ...s.refCol, ...s.refColGutter }}>
+              <Text style={{ ...s.refDomain, color: DOMAINS[domain].color,
+                borderBottomColor: DOMAINS[domain].color }}>
+                {DOMAINS[domain].label}
+              </Text>
+              {themes.map((t) => (
+                <View key={t} style={s.refItem}>
+                  {/* The column measure is ~40 characters, at which react-pdf's
+                      default breaking sets "nav-igate" and "ap-proach". */}
+                  <Text style={s.refText} hyphenationCallback={NO_BREAK}>
+                    <Text style={s.refName}>{THEMES[t].name}</Text> — {THEMES[t].desc}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+
         <View style={s.pageFoot} fixed>
           <Text style={s.pageFootT}>
             Ipsative (intra-individual) profile for development use. Ranks are relative within

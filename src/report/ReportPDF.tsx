@@ -146,8 +146,12 @@ const s = StyleSheet.create({
    person's own mean, and at an extreme mean a quadrant box narrows to ~18pt
    and every label in all twelve panels breaks to stay inside it. Registering
    the callback globally would spill those labels across their neighbours. The
-   prop is read ahead of the global one, so this reaches only these lines. */
-const NO_BREAK = (word: string) => [word];
+   prop is read ahead of the global one, so this reaches only these lines.
+
+   Exported because the team grid's reference page sets the same descriptions
+   at a comparable measure and needs the same forbidding — one callback so the
+   two cannot drift into breaking words differently. */
+export const NO_BREAK = (word: string) => [word];
 
 /* The disclaimer belongs on any page that can be read on its own, and `fixed`
    is what keeps it out of the height accounting on each. */

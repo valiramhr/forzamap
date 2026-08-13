@@ -5,9 +5,11 @@ import { STRENGTHS_SLUG } from "../../lib/assignments";
 import { DOMAINS, THEMES, score } from "../../lib/instrument";
 import type { DomainKey, ThemeKey, Item, Answers } from "../../lib/instrument";
 import {
-  DOMAIN_ORDER, THEME_ORDER, GROUPS, SHORT, TOP_N, SHOWN_RANKS, SHARED_AT,
-  CARD, IPSATIVE_CAVEAT, band, blend, emptyDomains, plural,
-  type TeamPerson,
+  DOMAIN_ORDER, THEME_ORDER, GROUPS, SHORT, TOP_N, SHARED_AT,
+  DEPTH_DEFAULT, DEPTH_MODES, CARD, IPSATIVE_CAVEAT,
+  band, blend, depthHeadNote, depthNote, emptyDomains, isDepthMode, legendKeys,
+  plural, shows,
+  type DepthMode, type TeamPerson,
 } from "../../lib/teamgrid";
 import { PAPER, INK, MUTED, HAIR, FORZA, BODY } from "../../lib/ui";
 
@@ -30,9 +32,11 @@ import { PAPER, INK, MUTED, HAIR, FORZA, BODY } from "../../lib/ui";
 /* The column order, the rank bands and the thresholds are shared with the PDF
    export — see lib/teamgrid.ts. */
 
-/* v2 keeps the row order beside the selection, so a dragged order survives a
-   reload the way the team does. v1 held the selection alone, as a bare array,
-   and is still read once so an existing team is not lost. */
+/* v2 keeps the row order and the rank depth beside the selection, so a dragged
+   order and a chosen depth survive a reload the way the team does. v1 held the
+   selection alone, as a bare array, and is still read once so an existing team
+   is not lost. A v2 store written before the depth control existed simply has
+   no `depth` key and falls back to the default. */
 const STORE_KEY = "forzamap.team-grid.v2";
 const STORE_KEY_V1 = "forzamap.team-grid.v1";
 
@@ -108,8 +112,9 @@ async function loadProfile(assignmentId: string): Promise<Profile> {
   }
 }
 
-/** The team and the order it is shown in, as they survive a reload. */
-interface Store { selected: string[]; mode: SortMode; order: string[] }
+/** The team, the order it is shown in and how deep the ranks run, as they
+    survive a reload. */
+interface Store { selected: string[]; mode: SortMode; order: string[]; depth: DepthMode }
 
 const ids = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
@@ -119,7 +124,7 @@ const ids = (v: unknown): string[] =>
    with no order behind it is not restored — it would draw as an arbitrary
    order under a button claiming somebody arranged it. */
 function readStore(): Store {
-  const empty: Store = { selected: [], mode: "name", order: [] };
+  const empty: Store = { selected: [], mode: "name", order: [], depth: DEPTH_DEFAULT };
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
     if (!raw) return { ...empty, selected: ids(JSON.parse(window.localStorage.getItem(STORE_KEY_V1) || "null")) };
@@ -127,7 +132,8 @@ function readStore(): Store {
     const order = ids(v.order);
     const mode: SortMode = v.mode === "domain" ? "domain"
       : v.mode === "custom" && order.length ? "custom" : "name";
-    return { selected: ids(v.selected), mode, order };
+    return { selected: ids(v.selected), mode, order,
+      depth: isDepthMode(v.depth) ? v.depth : DEPTH_DEFAULT };
   } catch { return empty; }
 }
 
@@ -143,6 +149,10 @@ export default function TeamGrid() {
      no longer on the team are simply skipped when the rows are drawn, so
      removing a person and adding them back does not corrupt the order. */
   const [order, setOrder] = useState<string[]>(() => readStore().order);
+  /* How much of each person's ranking the cells carry. Changes nothing that is
+     counted — the footer and the four summary columns are top-five facts and
+     stay where they are — only how far down each row is drawn. */
+  const [depth, setDepth] = useState<DepthMode>(() => readStore().depth);
   const [dragId, setDragId] = useState<string | null>(null);
   /* Spoken to a screen reader after a move, since a row changing places is
      silent to anyone not watching the grid. */
@@ -184,9 +194,10 @@ export default function TeamGrid() {
   useEffect(() => {
     if (dragId) return;
     try {
-      window.localStorage.setItem(STORE_KEY, JSON.stringify({ selected, mode: sortMode, order }));
+      window.localStorage.setItem(STORE_KEY,
+        JSON.stringify({ selected, mode: sortMode, order, depth }));
     } catch { /* private mode */ }
-  }, [selected, sortMode, order, dragId]);
+  }, [selected, sortMode, order, depth, dragId]);
 
   /* A stored id whose candidate or assignment has since been deleted no longer
      names anybody, so it leaves the selection rather than sitting there as a
@@ -396,8 +407,9 @@ export default function TeamGrid() {
   };
 
   /* ── exports ──────────────────────────────────────────────────────────
-     Both take the rows as they are drawn, so an arrangement made on screen is
-     the arrangement that leaves the page. */
+     Both take the rows as they are drawn AND the depth they are drawn at, so
+     an arrangement made on screen is the arrangement that leaves the page and
+     a ranking cut short on screen is cut short in the file. */
 
   function save(blob: Blob, ext: string) {
     const url = URL.createObjectURL(blob);
@@ -424,9 +436,13 @@ export default function TeamGrid() {
     };
     const head = ["Person", "Email",
       ...THEME_ORDER.map((t) => `${THEMES[t].name} (${DOMAINS[THEMES[t].domain].label})`)];
+    /* A rank the grid is not showing leaves an empty field rather than a zero
+       or a dash: the file is the grid, and the grid says nothing there. */
     const body = ready.map((r) => {
       const p = profiles[r.id];
-      const ranks = p?.state === "ready" ? THEME_ORDER.map((t) => p.rank[t]) : [];
+      const ranks = p?.state === "ready"
+        ? THEME_ORDER.map((t) => (shows(p.rank[t], depth) ? p.rank[t] : ""))
+        : [];
       return [r.name, r.email, ...ranks];
     });
     const csv = [head, ...body].map((r) => r.map(cell).join(",")).join("\r\n");
@@ -440,7 +456,7 @@ export default function TeamGrid() {
     try {
       const { teamGridPdfBlob } = await import("../../report/TeamGridPDF");
       save(await teamGridPdfBlob({
-        people: exportable(), generatedAt: new Date().toISOString(),
+        people: exportable(), generatedAt: new Date().toISOString(), depth,
       }), "pdf");
       setPdfState("idle");
     } catch (e) {
@@ -648,21 +664,37 @@ export default function TeamGrid() {
                 </div>
 
                 <div className="tg-sortbar">
-                  <span className="font-label tg-sortlbl">Rows</span>
-                  {([["name", "A to Z"], ["domain", "By domain concentration"],
-                    ["custom", "Custom"]] as const).map(([k, label]) => (
-                    <button key={k} onClick={() => chooseSort(k)} aria-pressed={sortMode === k}
-                      /* Custom is a state the grid arrives in by being dragged,
-                         not a sort that can be asked for from nothing. */
-                      disabled={k === "custom" && order.length === 0}
-                      title={k === "custom" ? "Set by dragging a row by its handle" : undefined}
-                      className="font-label tg-toggle"
-                      style={{ background: sortMode === k ? INK : "transparent",
-                        color: sortMode === k ? PAPER : MUTED,
-                        borderColor: sortMode === k ? INK : HAIR }}>
-                      {label}
-                    </button>
-                  ))}
+                  <div className="tg-sortgrp" role="group" aria-label="Row order">
+                    <span className="font-label tg-sortlbl">Rows</span>
+                    {([["name", "A to Z"], ["domain", "By domain concentration"],
+                      ["custom", "Custom"]] as const).map(([k, label]) => (
+                      <button key={k} onClick={() => chooseSort(k)} aria-pressed={sortMode === k}
+                        /* Custom is a state the grid arrives in by being dragged,
+                           not a sort that can be asked for from nothing. */
+                        disabled={k === "custom" && order.length === 0}
+                        title={k === "custom" ? "Set by dragging a row by its handle" : undefined}
+                        className="font-label tg-toggle"
+                        style={{ background: sortMode === k ? INK : "transparent",
+                          color: sortMode === k ? PAPER : MUTED,
+                          borderColor: sortMode === k ? INK : HAIR }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* How far down each row is drawn. Beside the row sort because
+                      the two together are the whole of "how this grid is set". */}
+                  <div className="tg-sortgrp" role="group" aria-label="Ranks shown">
+                    <span className="font-label tg-sortlbl tg-sortlbl2">Ranks</span>
+                    {DEPTH_MODES.map(({ key, label, title }) => (
+                      <button key={key} onClick={() => setDepth(key)} aria-pressed={depth === key}
+                        title={title} className="font-label tg-toggle"
+                        style={{ background: depth === key ? INK : "transparent",
+                          color: depth === key ? PAPER : MUTED,
+                          borderColor: depth === key ? INK : HAIR }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   <span className="tg-sorthint">Drag a row by its handle, or focus one and use ↑ ↓.</span>
                 </div>
               </>
@@ -709,7 +741,7 @@ export default function TeamGrid() {
                         <tr>
                           <th className="tg-corner tg-corner2" scope="col">
                             <span className="tg-corner-s">
-                              Rank within the person · blank past {SHOWN_RANKS}
+                              Rank within the person · {depthHeadNote(depth)}
                             </span>
                           </th>
                           {GROUPS.map(({ domain, themes }) =>
@@ -768,13 +800,18 @@ export default function TeamGrid() {
                                     themes.map((t, i) => {
                                       const rank = p.rank[t];
                                       const cls = `tg-cell${i === 0 ? " tg-dsep" : ""}`;
-                                      if (rank > SHOWN_RANKS) return <td key={t} className={cls} />;
-                                      const b = band(rank, DOMAINS[domain].color);
+                                      if (!shows(rank, depth)) return <td key={t} className={cls} />;
+                                      const b = band(rank, DOMAINS[domain].color, depth);
                                       return (
                                         <td key={t} className={`${cls} font-mono`}
                                           style={{ background: b.background, color: b.color,
-                                            fontWeight: b.strong ? 500 : undefined }}
-                                          title={`${r.name} — ${THEMES[t].name} ranks ${rank} of 20 for them`}>
+                                            fontWeight: b.strong ? 500 : undefined,
+                                            /* An inset rule rather than a border: the
+                                               cell's own hairlines belong to the table
+                                               and a real border would move the column. */
+                                            boxShadow: b.outline
+                                              ? `inset 0 0 0 1.5px ${b.outline}` : undefined }}
+                                          title={`${r.name} — ${THEMES[t].name} ranks ${rank} of ${THEME_ORDER.length} for them`}>
                                           {rank}
                                         </td>
                                       );
@@ -832,12 +869,19 @@ export default function TeamGrid() {
                       </tfoot>
                     </table>
                   </div>
+                  {/* Drawn from the same `band` the cells are, so the key cannot
+                      describe a banding the grid is not using. */}
                   <p className="tg-legend">
-                    <span className="tg-key" style={{ background: INK, color: "#fff" }}>1–3</span>
-                    <span className="tg-key" style={{ background: blend(INK, 0.45), color: INK }}>4–7</span>
-                    <span className="tg-key" style={{ background: blend(INK, 0.18), color: MUTED }}>8–10</span>
+                    {legendKeys(depth).map(({ label, band: b }) => (
+                      <span key={label} className="tg-key"
+                        style={{ background: b.background, color: b.color,
+                          fontWeight: b.strong ? 500 : undefined,
+                          boxShadow: b.outline ? `inset 0 0 0 1.5px ${b.outline}` : undefined }}>
+                        {label}
+                      </span>
+                    ))}
                     <span style={{ color: MUTED }}>
-                      Rank within that person, in their theme's domain colour. Blank past {SHOWN_RANKS}.
+                      Rank within that person, in their theme's domain colour. {depthNote(depth)}{" "}
                       Click a name to open their report.
                     </span>
                   </p>
@@ -977,8 +1021,14 @@ export default function TeamGrid() {
         .tg-shared-n,.tg-bal-n{margin-left:auto;font-size:11px;color:${MUTED}}
         .tg-balbar{display:flex;height:10px;overflow:hidden;margin:2px 0 12px;background:${HAIR}}
 
-        .tg-sortbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+        .tg-sortbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+        /* Each group holds together when the bar wraps, so a label never ends
+           up on one line with its buttons on the next. */
+        .tg-sortgrp{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
         .tg-sortlbl{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};margin-right:4px}
+        /* The second group is fenced off from the first, so the two reads —
+           which rows, how deep — are visibly two controls and not six buttons. */
+        .tg-sortlbl2{border-left:1px solid ${HAIR};padding-left:14px;margin-left:0}
         .tg-toggle{padding:7px 11px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
           border:1px solid ${HAIR};cursor:pointer}
         .tg-toggle:disabled{opacity:.45;cursor:default}
