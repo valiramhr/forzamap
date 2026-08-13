@@ -88,13 +88,17 @@ type Profile =
       dom: Record<DomainKey, number>;      // top-five slots held in each domain
     };
 
-/** One named team: who is on it, and how its rows are arranged. */
+/** One named team: who is on it, how its rows are arranged, and how far down
+    each ranking its grid is drawn. All three belong to the team rather than to
+    the page — two teams are read for different reasons, and a depth that suits
+    a leadership group of five is not the one that suits a function of forty. */
 interface Team {
   id: string;
   name: string;
   selected: string[];
   mode: SortMode;
   order: string[];
+  depth: DepthMode;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -130,12 +134,11 @@ async function loadProfile(assignmentId: string): Promise<Profile> {
   }
 }
 
-/** The teams, the order their rows are shown in, how deep the ranks run and
-    which gap reading is open, as they survive a reload. */
+/** The teams, each carrying its own arrangement, and which gap reading is
+    open, as they survive a reload. */
 interface Store {
   teams: Team[];
   activeId: string;
-  depth: DepthMode;
   /** null until somebody picks one, so the default can follow the team count. */
   scope: GapScope | null;
 }
@@ -149,7 +152,9 @@ const ids = (v: unknown): string[] =>
 let seq = 0;
 const tid = () => `t${Date.now().toString(36)}${(seq++).toString(36)}`;
 
-function makeTeam(name: string, t: Partial<Team> = {}): Team {
+/* `fallback` is the depth a team inherits when it carries none of its own —
+   the one the older store held for the whole page. */
+function makeTeam(name: string, t: Partial<Team> = {}, fallback = DEPTH_DEFAULT): Team {
   const order = ids(t.order);
   return {
     id: typeof t.id === "string" && t.id ? t.id : tid(),
@@ -159,38 +164,37 @@ function makeTeam(name: string, t: Partial<Team> = {}): Team {
        an arbitrary order under a button claiming somebody arranged it. */
     mode: t.mode === "domain" ? "domain" : t.mode === "custom" && order.length ? "custom" : "name",
     order,
+    depth: isDepthMode(t.depth) ? t.depth : fallback,
   };
 }
 
 /* Anything unreadable is simply dropped: a corrupt store costs the admin one
    re-selection, and is not worth a failure state on the page. */
 function readStore(): Store {
-  const base = (teams: Team[], depth: DepthMode = DEPTH_DEFAULT,
-    scope: GapScope | null = null): Store =>
-    ({ teams, activeId: teams[0].id, depth, scope });
+  const base = (teams: Team[], scope: GapScope | null = null): Store =>
+    ({ teams, activeId: teams[0].id, scope });
   const blank = () => base([makeTeam("Team 1")]);
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
     if (raw) {
       const v = JSON.parse(raw) ?? {};
+      /* A page-wide `depth` is what this store held before the setting moved
+         onto the team; it becomes every team's starting depth. */
+      const was = isDepthMode(v.depth) ? v.depth : DEPTH_DEFAULT;
       const teams = (Array.isArray(v.teams) ? v.teams : [])
         .filter((t: any) => t && typeof t === "object")
         .map((t: any, i: number) =>
-          makeTeam(typeof t.name === "string" && t.name.trim() ? t.name : `Team ${i + 1}`, t));
+          makeTeam(typeof t.name === "string" && t.name.trim() ? t.name : `Team ${i + 1}`, t, was));
       if (teams.length === 0) return blank();
       const activeId = teams.some((t: Team) => t.id === v.activeId) ? v.activeId : teams[0].id;
-      return {
-        teams, activeId,
-        depth: isDepthMode(v.depth) ? v.depth : DEPTH_DEFAULT,
-        scope: isGapScope(v.scope) ? v.scope : null,
-      };
+      return { teams, activeId, scope: isGapScope(v.scope) ? v.scope : null };
     }
 
     /* One team, carrying whatever the older store held. */
     const two = window.localStorage.getItem(STORE_KEY_V2);
     if (two) {
       const v = JSON.parse(two) ?? {};
-      return base([makeTeam("Team 1", v)], isDepthMode(v.depth) ? v.depth : DEPTH_DEFAULT);
+      return base([makeTeam("Team 1", v, isDepthMode(v.depth) ? v.depth : DEPTH_DEFAULT)]);
     }
     const oneUp = ids(JSON.parse(window.localStorage.getItem(STORE_KEY_V1) || "null"));
     return oneUp.length ? base([makeTeam("Team 1", { selected: oneUp })]) : blank();
@@ -251,10 +255,6 @@ export default function TeamGrid() {
   const [activeId, setActiveId] = useState<string>(boot.activeId);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [query, setQuery] = useState("");
-  /* How much of each person's ranking the cells carry, for every grid on the
-     page. Changes nothing that is counted — every summary is a top-five fact —
-     only how far down each row is drawn. */
-  const [depth, setDepth] = useState<DepthMode>(boot.depth);
   /* What somebody chose, not what is showing: with no choice made the scope
      follows the team count, and "compare" is not a reading a single team has. */
   const [scopePick, setScopePick] = useState<GapScope | null>(boot.scope);
@@ -307,9 +307,9 @@ export default function TeamGrid() {
     if (drag) return;
     try {
       window.localStorage.setItem(STORE_KEY,
-        JSON.stringify({ teams, activeId: active.id, depth, scope: scopePick }));
+        JSON.stringify({ teams, activeId: active.id, scope: scopePick }));
     } catch { /* private mode */ }
-  }, [teams, active, depth, scopePick, drag]);
+  }, [teams, active, scopePick, drag]);
 
   const patchTeam = useCallback((id: string, f: (t: Team) => Team) =>
     setTeams((ts) => ts.map((t) => (t.id === id ? f(t) : t))), []);
@@ -478,7 +478,8 @@ export default function TeamGrid() {
   /* ── the gap analysis, at the chosen width ────────────────────────── */
 
   const rosters = useMemo<TeamRoster[]>(
-    () => views.map((v) => ({ id: v.team.id, name: v.team.name, people: v.people })),
+    () => views.map((v) =>
+      ({ id: v.team.id, name: v.team.name, people: v.people, depth: v.team.depth })),
     [views],
   );
   const anyReady = rosters.some((r) => r.people.length > 0);
@@ -604,7 +605,7 @@ export default function TeamGrid() {
     const body = views.flatMap((v) => v.rows.flatMap((r) => {
       const p = profiles[r.id];
       if (p?.state !== "ready") return [];
-      const ranks = THEME_ORDER.map((t) => (shows(p.rank[t], depth) ? p.rank[t] : ""));
+      const ranks = THEME_ORDER.map((t) => (shows(p.rank[t], v.team.depth) ? p.rank[t] : ""));
       return [[v.team.name, r.name, r.email, ...ranks]];
     }));
     const csv = [head, ...body].map((r) => r.map(cell).join(",")).join("\r\n");
@@ -618,7 +619,7 @@ export default function TeamGrid() {
     try {
       const { teamGridPdfBlob } = await import("../../report/TeamGridPDF");
       save(await teamGridPdfBlob({
-        teams: rosters, scope, generatedAt: new Date().toISOString(), depth,
+        teams: rosters, scope, generatedAt: new Date().toISOString(),
       }), "pdf");
       setPdfState("idle");
     } catch (e) {
@@ -856,22 +857,6 @@ export default function TeamGrid() {
                   </section>
                 )}
 
-                {/* How far down every grid on the page is drawn. */}
-                <div className="tg-scopebar">
-                  <div className="tg-sortgrp" role="group" aria-label="Ranks shown">
-                    <span className="font-label tg-sortlbl">Ranks</span>
-                    {DEPTH_MODES.map(({ key, label, title }) => (
-                      <button key={key} onClick={() => setDepth(key)} aria-pressed={depth === key}
-                        title={title} className="font-label tg-toggle"
-                        style={{ background: depth === key ? INK : "transparent",
-                          color: depth === key ? PAPER : MUTED,
-                          borderColor: depth === key ? INK : HAIR }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="tg-scopenote">Applies to every grid below.</span>
-                </div>
               </>
             )}
 
@@ -923,11 +908,27 @@ export default function TeamGrid() {
                           </button>
                         ))}
                       </div>
+                      {/* Beside the row sort because the two together are the
+                          whole of "how this team's grid is set", and each team
+                          is set on its own. */}
+                      <div className="tg-sortgrp" role="group" aria-label={`Ranks shown on ${v.team.name}`}>
+                        <span className="font-label tg-sortlbl tg-sortlbl2">Ranks</span>
+                        {DEPTH_MODES.map(({ key, label, title }) => (
+                          <button key={key} aria-pressed={v.team.depth === key}
+                            onClick={() => patchTeam(v.team.id, (t) => ({ ...t, depth: key }))}
+                            title={title} className="font-label tg-toggle"
+                            style={{ background: v.team.depth === key ? INK : "transparent",
+                              color: v.team.depth === key ? PAPER : MUTED,
+                              borderColor: v.team.depth === key ? INK : HAIR }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                       <span className="tg-sorthint">Drag a row by its handle, or focus one and use ↑ ↓.</span>
                     </div>
 
                     <TeamTable
-                      view={v} profiles={profiles} depth={depth}
+                      view={v} profiles={profiles}
                       dragId={drag?.teamId === v.team.id ? drag.id : null}
                       onStartDrag={(id) => startDrag(v.team.id, id)}
                       onDragOver={(id, i) => dragOver(v.team.id, id, i)}
@@ -1061,6 +1062,9 @@ export default function TeamGrid() {
            up on one line with its buttons on the next. */
         .tg-sortgrp{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
         .tg-sortlbl{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};margin-right:4px}
+        /* The second group is fenced off from the first, so the two reads —
+           which rows, how deep — are visibly two controls and not six buttons. */
+        .tg-sortlbl2{border-left:1px solid ${HAIR};padding-left:14px;margin-left:0}
         .tg-toggle{padding:7px 11px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
           border:1px solid ${HAIR};cursor:pointer;background:none;color:${MUTED}}
         .tg-toggle:disabled{opacity:.45;cursor:default}
@@ -1327,7 +1331,6 @@ function CompareTable({ rows, teams }: { rows: ThemeContrast[]; teams: TeamRoste
 interface TeamTableProps {
   view: TeamView;
   profiles: Record<string, Profile>;
-  depth: DepthMode;
   dragId: string | null;
   onStartDrag(id: string): void;
   onDragOver(id: string, index: number): void;
@@ -1338,10 +1341,11 @@ interface TeamTableProps {
 }
 
 function TeamTable({
-  view, profiles, depth, dragId, onStartDrag, onDragOver, onEndDrag, onNudge, onRetry, href,
+  view, profiles, dragId, onStartDrag, onDragOver, onEndDrag, onNudge, onRetry, href,
 }: TeamTableProps) {
   const { rows, holders, summary, team } = view;
   const { slots, totalSlots } = summary;
+  const { depth } = team;
   const pct = (n: number) => share(n, totalSlots);
 
   return (

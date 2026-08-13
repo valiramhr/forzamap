@@ -3,10 +3,10 @@ import { PDF_FONTS, NO_BREAK } from "./ReportPDF";
 import { DOMAINS, THEMES } from "../lib/instrument";
 import {
   DOMAIN_ORDER, THEME_ORDER, GROUPS, SHORT, TOP_N, SHARED_AT,
-  DEPTH_DEFAULT, CARD, IPSATIVE_CAVEAT, SCARCITY_NOTE,
+  CARD, IPSATIVE_CAVEAT, SCARCITY_NOTE,
   band, blend, contrastNote, depthHeadNote, depthNote, gapSummary, isSharp,
   legendKeys, plural, poolPeople, scopeTitle, share, shows, themeContrasts,
-  type DepthMode, type GapScope, type GapSummary, type TeamRoster, type ThemeContrast,
+  type GapScope, type GapSummary, type TeamRoster, type ThemeContrast,
 } from "../lib/teamgrid";
 import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
 
@@ -44,7 +44,8 @@ import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
 
    Everything the ranks mean, and cannot mean, is in lib/teamgrid.ts alongside
    the screen's own reading of them — including how far down each row is drawn,
-   which the grid's depth control sets and this document follows. */
+   which each TEAM's own depth control sets and its page here follows, so two
+   teams set differently on screen leave the page set differently too. */
 
 const { base: BASE, display: DISPLAY, displayWeight: DISPLAY_WEIGHT, mediumWeight: MEDIUM_WEIGHT } = PDF_FONTS;
 const display = { fontFamily: DISPLAY, fontWeight: DISPLAY_WEIGHT };
@@ -394,11 +395,9 @@ export interface TeamGridPDFProps {
   scope: GapScope;
   /** ISO date the export was taken. */
   generatedAt: string;
-  /** How far down each ranking the screen is drawing; the document follows it. */
-  depth?: DepthMode;
 }
 
-export function TeamGridPDF({ teams, scope, generatedAt, depth = DEPTH_DEFAULT }: TeamGridPDFProps) {
+export function TeamGridPDF({ teams, scope, generatedAt }: TeamGridPDFProps) {
   /* A team with nobody scored has no counts to draw and no absence to read:
      "nobody leads with it here" and "nobody here was measured" are different
      facts, and only the first one belongs in a comparison. */
@@ -474,6 +473,9 @@ export function TeamGridPDF({ teams, scope, generatedAt, depth = DEPTH_DEFAULT }
       {teams.map((t) => {
         const summary = gapSummary(t.people);
         const { holders, slots, totalSlots } = summary;
+        /* This team's own depth, so a grid cut short on screen is cut short
+           here — and a second team set differently keeps its own setting. */
+        const depth = t.depth;
         const pct = (n: number) => share(n, totalSlots);
         return (
           <Page key={t.id} size="A4" orientation="landscape" style={s.page}>

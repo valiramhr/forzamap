@@ -52,12 +52,15 @@ export interface TeamPerson {
   dom: Record<DomainKey, number>;   // top-five slots held in each domain
 }
 
-/** A team as anything that draws it needs it: a name, and the scored people on
-    it in the order the screen is showing them. */
+/** A team as anything that draws it needs it: a name, the scored people on it
+    in the order the screen is showing them, and how far down their rankings
+    that team's grid is drawn. The depth is the team's own, so an export shows
+    each grid cut exactly where the screen cuts it. */
 export interface TeamRoster {
   id: string;
   name: string;
   people: TeamPerson[];
+  depth: DepthMode;
 }
 
 /** `hex` at `a` opacity over `base`, as an opaque 6-digit hex.
