@@ -3,20 +3,52 @@ import type { DomainKey, Result, ThemeKey } from "../lib/instrument";
 import { DOMAINS, THEMES } from "../lib/instrument";
 import { PAPER, INK, MUTED, HAIR, BODY, FORZA, fmtReportDate } from "../lib/ui";
 
-/* Archivo static TTFs from Google Fonts' font host — react-pdf can only parse TTF,
-   not the woff2 the CSS API serves to modern browsers. If registration fails the
-   document falls back to the built-in Helvetica and keeps the brand palette. */
-const ARCHIVO_400 = "https://fonts.gstatic.com/s/archivo/v25/k3k6o8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTTNDNp8A.ttf";
-const ARCHIVO_500 = "https://fonts.gstatic.com/s/archivo/v25/k3k6o8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTTBjNp8A.ttf";
-const ARCHIVO_800 = "https://fonts.gstatic.com/s/archivo/v25/k3k6o8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTTtDRp8A.ttf";
+/* Archivo, served from our own origin.
+   ─────────────────────────────────────────────────────────────────────
+   These were fetched from fonts.gstatic.com at render time, which put every
+   PDF in the app — both candidate reports and the team grid, all of which
+   register through this module — behind a third-party host. A network that
+   blocks Google Fonts took all of them down at once.
 
-let BASE = "Helvetica";
-let DISPLAY = "Helvetica-Bold";
-let DISPLAY_WEIGHT: 400 | 800 = 400;
-/* Helvetica has no medium, so on the fallback path the candidate's name simply
-   renders at the regular weight rather than failing to resolve. */
-let MEDIUM_WEIGHT: 400 | 500 = 400;
-try {
+   THERE IS NO FALLBACK TO HELVETICA, whatever the shape of the code here used
+   to suggest. Font.register is synchronous and only records the source; the
+   fetch happens inside react-pdf's layout pass, where a rejection propagates
+   out of `await Promise.all` and fails the whole document. So a font the
+   browser cannot load is not a document in a different typeface — it is no
+   document at all. The two download surfaces say so out loud rather than
+   quietly handing back a dead button: see report/PdfDownload.tsx.
+
+   TTF, not woff2: react-pdf can only parse the former, and the Google Fonts
+   CSS API serves the latter to modern browsers. These are the full static
+   instances, not Latin-1 subsets — a subset is a third of the size but drops
+   Vietnamese and Central European letters, and a tofu box in somebody's own
+   name on their own report is not a saving.
+
+   `new URL(..., import.meta.url)` is the form Vite reads statically: each file
+   is emitted as a content-hashed asset and this resolves to its built URL at
+   runtime, so the files cache immutably and nothing is fetched until somebody
+   actually builds a PDF. Licence beside them in fonts/OFL.txt. */
+const ARCHIVO_400 = new URL("./fonts/archivo-400.ttf", import.meta.url).href;
+const ARCHIVO_500 = new URL("./fonts/archivo-500.ttf", import.meta.url).href;
+const ARCHIVO_800 = new URL("./fonts/archivo-800.ttf", import.meta.url).href;
+
+/** Register Archivo, discarding anything registered before.
+    ─────────────────────────────────────────────────────────────────────
+    Registration is normally a once-per-page affair, done below on import. It
+    is exported because RETRY NEEDS IT: react-pdf caches each source's load
+    promise on the source object, so a font fetch that failed once stays
+    failed for the life of the page however often the document is asked for
+    again. Without this, a "Try again" button after a font failure could never
+    succeed — the same lie as a button that looks ready and does nothing.
+
+    Font.clear() drops the whole registry rather than the one family, because
+    that is the only reset react-pdf offers (its `reset` sets `data` on the
+    wrong object and does nothing). Archivo is the only family this app ever
+    registers, so there is nothing else to lose. Do not call this while a
+    document is rendering — clear the registry under a render in flight and
+    that render fails. */
+export function registerPdfFonts() {
+  Font.clear();
   Font.register({
     family: "Archivo",
     fonts: [
@@ -25,13 +57,14 @@ try {
       { src: ARCHIVO_800, fontWeight: 800 },
     ],
   });
-  BASE = "Archivo";
-  DISPLAY = "Archivo";
-  DISPLAY_WEIGHT = 800;
-  MEDIUM_WEIGHT = 500;
-} catch (e) {
-  console.warn("Archivo registration failed — PDF falls back to Helvetica.", e);
 }
+
+registerPdfFonts();
+
+const BASE = "Archivo";
+const DISPLAY = "Archivo";
+const DISPLAY_WEIGHT: 400 | 800 = 800;
+const MEDIUM_WEIGHT: 400 | 500 = 500;
 
 /* Display role: Archivo 800 at -0.035em — react-pdf takes letterSpacing in points,
    so each display style carries its own size × -0.035. */

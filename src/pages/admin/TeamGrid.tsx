@@ -331,9 +331,11 @@ export default function TeamGrid() {
   const [say, setSay] = useState("");
   /* Which export is building, and which one failed — keyed by "workspace" or
      by a team id, since the navigator's exports and a team's own are two
-     buttons that can be pressed independently. */
+     buttons that can be pressed independently. The failure carries its reason:
+     "see the browser console" is not something to ask of somebody who has just
+     lost a download. */
   const [pdfBusy, setPdfBusy] = useState<string | null>(null);
-  const [pdfErr, setPdfErr] = useState<string | null>(null);
+  const [pdfErr, setPdfErr] = useState<{ key: string; message: string } | null>(null);
 
   /* Every id ever queued. Dedupes without reading state, so a second "Add all"
      or a re-render mid-flight cannot double-fetch anyone — including somebody
@@ -772,16 +774,23 @@ export default function TeamGrid() {
   /* The document — and the renderer behind it — is fetched on the click rather
      than with the page: a grid nobody exports should not pay for a PDF engine. */
   async function makePdf(key: string, list: TeamRoster[], s: GapScope, stem: string) {
+    const retrying = pdfErr !== null;
     setPdfBusy(key);
     setPdfErr(null);
     try {
       const { teamGridPdfBlob } = await import("../../report/TeamGridPDF");
+      /* react-pdf caches a font source's load promise, failure included, so a
+         run that died on a font would die the same way for ever. Rebuilding
+         the registry is what makes "Try again" mean it. Only on a retry: a
+         first run has nothing to undo, and clearing the registry costs the
+         parsed font. */
+      if (retrying) (await import("../../report/ReportPDF")).registerPdfFonts();
       save(await teamGridPdfBlob({
         teams: list, scope: s, generatedAt: new Date().toISOString(),
       }), "pdf", stem);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Team grid PDF failed", e);
-      setPdfErr(key);
+      setPdfErr({ key, message: e?.message ? String(e.message) : String(e) });
     } finally {
       setPdfBusy(null);
     }
@@ -890,9 +899,9 @@ export default function TeamGrid() {
               title="Person-by-theme ranks, one row per person per team, every team">
               Download workspace CSV
             </button>
-            {pdfErr === "workspace" && (
+            {pdfErr?.key === "workspace" && (
               <p className="tw-navfail" role="alert">
-                The PDF could not be built — see the browser console.{" "}
+                The PDF could not be built — {pdfErr.message}{" "}
                 <button className="tg-linkbtn" onClick={downloadPdf}>Try again</button>
               </p>
             )}
@@ -984,9 +993,9 @@ export default function TeamGrid() {
                       </div>
                     </div>
 
-                    {pdfErr === active.id && (
+                    {pdfErr?.key === active.id && (
                       <p className="tg-fail" role="alert">
-                        The PDF could not be built — see the browser console.{" "}
+                        The PDF could not be built — {pdfErr.message}{" "}
                         <button className="tg-linkbtn" onClick={() => downloadTeamPdf(activeView)}>
                           Try again
                         </button>

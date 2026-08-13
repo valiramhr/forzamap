@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { PDFDownloadLink as PDFDownloadLinkBase } from "@react-pdf/renderer";
-const PDFDownloadLink = PDFDownloadLinkBase as unknown as (props: any) => JSX.Element;
+import PdfDownload from "../../report/PdfDownload";
 import { supabase } from "../../lib/supabase";
 import ReportView from "../../report/ReportView";
 import { ReportPDF } from "../../report/ReportPDF";
@@ -76,14 +75,14 @@ export default function CandidateReport() {
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, borderBottom: `1px solid ${HAIR}`, position: "sticky", top: 0, background: PAPER, zIndex: 5 }}>
         <Link to="/admin/candidates" className="font-label" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".07em", color: MUTED, textDecoration: "none" }}>← Candidates</Link>
         {ready && (
-          <PDFDownloadLink
-            document={isParadox
-              ? <ParadoxReportPDF result={result as ParadoxResult} name={name} completedAt={completedAt} />
-              : <ReportPDF result={result as StrengthsResult} name={name} completedAt={completedAt} />}
-            fileName={fileName}
-            className="font-label" style={{ marginLeft: "auto", padding: "10px 16px", background: INK, color: PAPER, fontSize: 12, letterSpacing: ".07em", textTransform: "uppercase", textDecoration: "none" }}>
-            {({ loading }: { loading: boolean }) => (loading ? "Preparing PDF…" : "Download PDF")}
-          </PDFDownloadLink>
+          <span style={{ marginLeft: "auto" }}>
+            <PdfDownload
+              document={isParadox
+                ? <ParadoxReportPDF result={result as ParadoxResult} name={name} completedAt={completedAt} />
+                : <ReportPDF result={result as StrengthsResult} name={name} completedAt={completedAt} />}
+              fileName={fileName}
+              className="font-label" style={{ display: "inline-block", padding: "10px 16px", background: INK, color: PAPER, fontSize: 12, letterSpacing: ".07em", textTransform: "uppercase", textDecoration: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }} />
+          </span>
         )}
       </div>
       {state === "loading" && <Center>Loading…</Center>}
