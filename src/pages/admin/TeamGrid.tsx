@@ -71,9 +71,11 @@ const FOOT_BG = "#F7F5F1";
    sorts do not fall back into it. */
 type SortMode = "name" | "domain" | "custom";
 
-/** A candidate with a completed Strengths Profile — one row of the pool. */
+/** A candidate with a completed Strengths Profile — one row of the pool, and
+    exactly one per person however many completed assignments they have. */
 interface Eligible {
   id: string;              // assignment id — also the report URL and the stored key
+  candidateId: string;     // who this is; the identity that outlives an assignment
   name: string;
   email: string;
 }
@@ -248,6 +250,10 @@ export default function TeamGrid() {
   const [pool, setPool] = useState<Eligible[]>([]);
   const [poolState, setPoolState] = useState<"loading" | "ready" | "error">("loading");
   const [poolError, setPoolError] = useState<string | null>(null);
+  /* Every completed assignment id → the pool row kept for that person, so a
+     stored team naming a superseded assignment can be pointed at the one that
+     replaced it. */
+  const [supersededBy, setSupersededBy] = useState<Map<string, string>>(() => new Map());
   /* Read once, not once per piece of state: a first visit has no store to read
      and mints a team id, and four reads would mint four different ones. */
   const [boot] = useState(readStore);
@@ -279,19 +285,60 @@ export default function TeamGrid() {
   const cancelEdit = useRef(false);
 
   /* Only candidates with a COMPLETED strengths assignment can appear: a grid
-     row is a rank order, and there is no rank order before submission. */
+     row is a rank order, and there is no rank order before submission.
+
+     ONE ROW PER CANDIDATE, not per assignment. Deleting an assignment and
+     re-inviting leaves a person with two completed ones, and keyed by
+     assignment they would arrive twice in the search and could be put on a
+     team twice as two rows of the same person — doubling their weight in
+     every count the grid makes. The newest submission wins: an older ranking
+     is a superseded reading of the same person, not a second person.
+
+     `submitted_at` is the assessment's own stamp and is what loadProfile picks
+     a scoring by, so the row the pool keeps and the responses it is scored
+     from are chosen the same way. `completed_at` stands in for assignments
+     backfilled before that stamp existed. */
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.from("assignments")
-        .select("id,candidate:candidates!inner(email,full_name),instrument:instruments!inner(slug)")
+        .select("id,completed_at,candidate:candidates!inner(user_id,email,full_name)," +
+          "instrument:instruments!inner(slug),assessments(submitted_at)")
         .eq("status", "completed").eq("instrument.slug", STRENGTHS_SLUG);
       if (error) { setPoolError(error.message); setPoolState("error"); return; }
-      const rows = ((data ?? []) as any[]).map((a) => {
+
+      const stamp = (v: unknown) => (typeof v === "string" ? Date.parse(v) || 0 : 0);
+      const newest = new Map<string, { row: Eligible; at: number }>();
+      /* Every assignment id points at the row the pool kept for that person,
+         itself included, so a team saved against a superseded assignment can
+         be carried across rather than silently losing them. */
+      const to = new Map<string, string>();
+      const seen: { id: string; candidateId: string }[] = [];
+
+      ((data ?? []) as any[]).forEach((a) => {
         const c = one(a.candidate);
-        return { id: a.id, name: c.full_name || c.email, email: c.email } as Eligible;
+        if (!c.user_id) return;
+        const at = Math.max(
+          ...(Array.isArray(a.assessments) ? a.assessments : [])
+            .map((x: any) => stamp(x?.submitted_at)),
+          stamp(a.completed_at));
+        const row: Eligible = {
+          id: a.id, candidateId: c.user_id,
+          name: c.full_name || c.email, email: c.email,
+        };
+        seen.push({ id: a.id, candidateId: c.user_id });
+        const held = newest.get(c.user_id);
+        if (!held || at > held.at) newest.set(c.user_id, { row, at });
       });
+
+      seen.forEach(({ id, candidateId }) => {
+        const kept = newest.get(candidateId);
+        if (kept) to.set(id, kept.row.id);
+      });
+
+      const rows = [...newest.values()].map((v) => v.row);
       rows.sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
       setPool(rows);
+      setSupersededBy(to);
       setPoolState("ready");
     })();
   }, []);
@@ -314,22 +361,42 @@ export default function TeamGrid() {
   const patchTeam = useCallback((id: string, f: (t: Team) => Team) =>
     setTeams((ts) => ts.map((t) => (t.id === id ? f(t) : t))), []);
 
-  /* A stored id whose candidate or assignment has since been deleted no longer
-     names anybody, so it leaves every team rather than sitting there as a row
-     that can never load. */
+  /* Stored ids are carried onto the row the pool kept for that person before
+     anything is dropped: somebody re-invited since the team was saved is on it
+     under an assignment that has since been superseded, and simply dropping
+     unknown ids would quietly shrink a team that nobody edited. Two ids for
+     one person — the old and the new — collapse to a single row.
+
+     What is left after that names nobody: a candidate or assignment deleted
+     outright leaves every team rather than sitting there as a row that can
+     never load. */
   useEffect(() => {
     if (poolState !== "ready") return;
+    const carry = (list: string[], keep?: (id: string) => boolean) => {
+      const out: string[] = [];
+      const seen = new Set<string>();
+      list.forEach((id) => {
+        const now = supersededBy.get(id) ?? id;
+        if (seen.has(now) || (keep && !keep(now))) return;
+        seen.add(now);
+        out.push(now);
+      });
+      return out;
+    };
+    const same = (a: string[], b: string[]) =>
+      a.length === b.length && a.every((x, i) => x === b[i]);
     setTeams((ts) => {
       let changed = false;
       const next = ts.map((t) => {
-        const kept = t.selected.filter((id) => poolIds.has(id));
-        if (kept.length === t.selected.length) return t;
+        const selected = carry(t.selected, (id) => poolIds.has(id));
+        const order = carry(t.order);
+        if (same(selected, t.selected) && same(order, t.order)) return t;
         changed = true;
-        return { ...t, selected: kept };
+        return { ...t, selected, order };
       });
       return changed ? next : ts;
     });
-  }, [poolState, poolIds]);
+  }, [poolState, poolIds, supersededBy]);
 
   const pump = useCallback(async () => {
     if (running.current) return;
@@ -455,7 +522,7 @@ export default function TeamGrid() {
       const p = profiles[r.id];
       if (p?.state !== "ready") return;
       p.top5.forEach((t) => holders[t].push(r));
-      people.push({ id: r.id, key: r.email.toLowerCase(), name: r.name, rank: p.rank, dom: p.dom });
+      people.push({ id: r.id, key: r.candidateId, name: r.name, rank: p.rank, dom: p.dom });
     });
     return { team, rows, people, holders, summary: gapSummary(people) };
   }), [teams, byId, profiles]);
