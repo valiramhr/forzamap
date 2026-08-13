@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
-import { PDFDownloadLink as PDFDownloadLinkBase } from "@react-pdf/renderer";
-const PDFDownloadLink = PDFDownloadLinkBase as unknown as (props: any) => JSX.Element;
+import PdfDownload from "../report/PdfDownload";
 import ParadoxReport from "../report/ParadoxReport";
 import { ParadoxReportPDF } from "../report/ParadoxReportPDF";
 import {
@@ -100,14 +99,12 @@ export default function PreviewParadox() {
           Regenerate
         </button>
 
-        <PDFDownloadLink key={`${seed}-${threshold}`}
+        {/* Keyed on the mock set: a regenerated preview is a different
+            document, and the renderer has to be started over for it. */}
+        <PdfDownload key={`${seed}-${threshold}`}
           document={<ParadoxReportPDF result={result} name={NAME} />}
-          fileName="paradox-profile.pdf" className="font-label" style={{ ...btn, background: INK, color: PAPER, textDecoration: "none" }}>
-          {({ loading, error }: { loading: boolean; error: Error | null }) => {
-            if (error) { console.error("Paradox PDF failed", error); return "PDF failed — see console"; }
-            return loading ? "Preparing PDF…" : "Download PDF";
-          }}
-        </PDFDownloadLink>
+          fileName="paradox-profile.pdf" className="font-label"
+          style={{ ...btn, background: INK, color: PAPER, textDecoration: "none", border: "none" }} />
       </div>
 
       {/* The mock set deliberately breaks four traits, so the flagged panels
